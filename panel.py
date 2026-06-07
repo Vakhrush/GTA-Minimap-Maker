@@ -1,0 +1,43 @@
+import bpy
+
+
+class GTAMINIMAP_PT_panel(bpy.types.Panel):
+    bl_label = "GTA Minimap Maker"
+    bl_idname = "GTAMINIMAP_PT_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'GTA Tools'
+
+    def draw(self, context):
+        layout = self.layout
+
+        layout.label(text="Minimap Tools")
+        layout.operator('gtaminimap.prepare_scene', icon='SCENE')
+        layout.operator('gtaminimap.make_shot', icon='RENDER_STILL')
+        layout.separator()
+        layout.operator('gtaminimap.exit_minimap_mode', icon='LOOP_BACK')
+
+        # Preferences-based color quick settings (read-only here; main settings in Add-on Preferences)
+        layout.separator()
+        box = layout.box()
+        box.label(text="Minimap Colors")
+        prefs = context.preferences.addons.get(__package__)
+        if prefs:
+            p = prefs.preferences
+            row = box.row()
+            row.prop(p, 'entity_color', text='Entity')
+            row = box.row()
+            row.prop(p, 'shell_color', text='Shell')
+            row = box.row()
+            row.prop(p, 'background_color', text='Background')
+
+            # separate custom paint into its own section (single label)
+            layout.separator()
+            cbox = layout.box()
+            cbox.prop(p, 'custom_paint_color', text='Custom Paint')
+            cbox.operator('gtaminimap.apply_color_selected', icon='BRUSH_DATA')
+        else:
+            box.label(text="Open Add-on Preferences to configure colors")
+
+
+classes = (GTAMINIMAP_PT_panel,)
