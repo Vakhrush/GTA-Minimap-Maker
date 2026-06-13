@@ -13,9 +13,9 @@ class GTAMINIMAP_PT_panel(bpy.types.Panel):
 
         layout.label(text="Minimap Tools")
         layout.operator('gtaminimap.prepare_scene', icon='SCENE')
-        layout.operator('gtaminimap.make_shot', icon='RENDER_STILL')
-        layout.separator()
         layout.operator('gtaminimap.exit_minimap_mode', icon='LOOP_BACK')
+        layout.separator()
+        layout.operator('gtaminimap.make_shot', icon='RENDER_STILL')
 
         # Preferences-based color quick settings (read-only here; main settings in Add-on Preferences)
         layout.separator()
