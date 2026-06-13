@@ -14,8 +14,8 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
     shot_resolution: bpy.props.IntProperty(
         name="Shot Resolution",
         description="Resolution for the minimap shot (pixels)",
-        default=4096,
-        min=2048,
+        default=2048,
+        min=1024,
     )
 
     entity_color: bpy.props.FloatVectorProperty(
@@ -25,8 +25,8 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         size=4,
         min=0.0,
         max=1.0,
-        # default: #6f6f6fff -> (111,111,111,255) normalized
-        default=(111.0/255.0, 111.0/255.0, 111.0/255.0, 1.0)
+        # default: #6f6f6fff
+        default=(0.158961, 0.158961, 0.158961, 1.0)
     )
 
     shell_color: bpy.props.FloatVectorProperty(
@@ -36,8 +36,8 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         size=4,
         min=0.0,
         max=1.0,
-        # default: #949494ff -> (148,148,148,255) normalized
-        default=(148.0/255.0, 148.0/255.0, 148.0/255.0, 1.0)
+        # default: #949494ff
+        default=(0.302126, 0.302126, 0.302126, 1.0)
     )
 
     background_color: bpy.props.FloatVectorProperty(
@@ -47,8 +47,8 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         size=4,
         min=0.0,
         max=1.0,
-        # default: #424242ff -> (66,66,66,255) normalized
-        default=(66.0/255.0, 66.0/255.0, 66.0/255.0, 1.0)
+        # default: #424242ff
+        default=(0.051269, 0.051269, 0.051269, 1.0)
     )
 
     custom_paint_color: bpy.props.FloatVectorProperty(
@@ -60,6 +60,7 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         max=1.0,
         default=(1.0, 1.0, 1.0, 1.0)
     )
+
 
     def draw(self, context):
         layout = self.layout
@@ -77,6 +78,8 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         cbox = layout.box()
         cbox.label(text="Custom Paint")
         cbox.prop(self, 'custom_paint_color')
+
+        # Trace / Export: using BMP only
 
 
 classes = (GTAMINIMAP_Preferences,)

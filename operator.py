@@ -1,5 +1,6 @@
 import bpy
 import math
+from pathlib import Path
 
 
 def _clamp_color_tuple(col, length=4):
@@ -35,6 +36,139 @@ def get_object_hierarchy(root_object):
     if root_object is None:
         return []
     return [root_object, *root_object.children_recursive]
+
+
+def _save_potrace_ready(png_path, out_path, bg_color, is_background=False, fmt='BMP'):
+    """Create a Potrace-ready black/white file from a PNG.
+
+    - png_path: Path to source PNG
+    - out_path: Path to output file (with desired extension)
+    - bg_color: tuple(r,g,b,a)
+    - is_background: if True, pixels that are visible become black (background layer)
+    - fmt: 'BMP' or 'PBM'
+    """
+    try:
+        print(f"[Potrace] _save_potrace_ready start: png_path={png_path}, out_path={out_path}")
+        img = None
+        fp = str(png_path)
+        # remove existing loaded image if any
+        for existing in bpy.data.images:
+            try:
+                if getattr(existing, 'filepath', '') == fp or getattr(existing, 'filepath_raw', '') == fp:
+                    img = existing
+                    break
+            except Exception:
+                continue
+
+        if img is None:
+            try:
+                print(f"[Potrace] loading image: {fp}")
+                img = bpy.data.images.load(fp)
+                print(f"[Potrace] image loaded: {fp}")
+            except Exception as e:
+                print(f"[Potrace] image load error: {e}")
+                return False
+
+        width = img.size[0]
+        height = img.size[1]
+        channels = img.channels
+        pixels = list(img.pixels[:])
+
+        # Build binary mask: True for object (black), False for background (white)
+        mask = [False] * (width * height)
+        eps = 1e-6
+        for y in range(height):
+            for x in range(width):
+                idx = (y * width + x) * channels
+                try:
+                    if channels >= 4:
+                        a = pixels[idx + 3]
+                        # If alpha present, use it to determine foreground
+                        present = (a > 0.5)
+                    else:
+                        r = pixels[idx]
+                        g = pixels[idx + 1]
+                        b = pixels[idx + 2]
+                        # compare to background color: if equal => background (False), else foreground (True)
+                        present = not (abs(r - bg_color[0]) <= eps and abs(g - bg_color[1]) <= eps and abs(b - bg_color[2]) <= eps)
+                except Exception:
+                    present = False
+
+                mask[y * width + x] = bool(present)
+
+        # Output (BMP only)
+        out_fmt = 'BMP'
+        if out_fmt == 'BMP':
+            # create new image in Blender with RGB channels and save as BMP
+            try:
+                name = f"potrace_tmp_{png_path.stem}"
+                new_img = bpy.data.images.new(name, width=width, height=height, alpha=False, float_buffer=False)
+                pix = [0.0] * (width * height * 3)
+                for y in range(height):
+                    for x in range(width):
+                        m = mask[y * width + x]
+                        v = 0.0 if m else 1.0
+                        idxp = (y * width + x) * 3
+                        pix[idxp] = v
+                        pix[idxp + 1] = v
+                        pix[idxp + 2] = v
+                try:
+                    new_img.pixels = pix
+                except Exception:
+                    # some Blender builds require iterative assignment
+                    for i in range(len(pix)):
+                        new_img.pixels[i] = pix[i]
+
+                try:
+                    print(f"[Potrace] saving BMP: {out_path}")
+                    new_img.filepath_raw = str(out_path)
+                    new_img.file_format = 'BMP'
+                    new_img.save()
+                    print(f"[Potrace] saved BMP: {out_path}")
+                except Exception as e:
+                    print(f"Potrace export error: {e}")
+                try:
+                    bpy.data.images.remove(new_img)
+                except Exception as e:
+                    print(f"Potrace export error: {e}")
+            except Exception:
+                return False
+
+        # PBM support removed
+
+        # cleanup loaded image
+        try:
+            if img is not None:
+                bpy.data.images.remove(img)
+                print(f"[Potrace] removed loaded image: {fp}")
+        except Exception as e:
+            print(f"Potrace export error: {e}")
+
+        print(f"[Potrace] _save_potrace_ready end: out_path={out_path}")
+
+        return True
+    except Exception:
+        return False
+
+
+def export_potrace_ready_files(target_dir, layer_names, bg_color, fmt='BMP'):
+    """Export Potrace-ready files for each layer name in layer_names list."""
+    print(f"[Potrace] export_potrace_ready_files called with target_dir={target_dir}, fmt={fmt}")
+    results = {}
+    for name in layer_names:
+        try:
+            print(f"[Potrace] start export for layer: {name}")
+            png_fp = target_dir / f"{name}.png"
+            out_fp = target_dir / f"{name}.{fmt.lower()}"
+            print(f"[Potrace] Potrace output path: {out_fp}")
+            is_bg = (name.lower() == 'background')
+            ok = _save_potrace_ready(png_fp, out_fp, bg_color, is_background=is_bg, fmt=fmt)
+            results[name] = ok
+            print(f"[Potrace] export result for {name}: {ok}")
+        except Exception as e:
+            print(f"Potrace export error: {e}")
+            results[name] = False
+    return results
 
 
 def object_is_sollumz(obj):
@@ -154,9 +288,9 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
 
         if prefs is not None:
             try:
-                bg_color = tuple(getattr(prefs, 'background_color', (0.258823543, 0.258823543, 0.258823543, 1.0)))
+                bg_color = tuple(getattr(prefs, 'background_color', (66.0/255.0, 66.0/255.0, 66.0/255.0, 1.0)))
             except Exception:
-                bg_color = (0.258823543, 0.258823543, 0.258823543, 1.0)
+                bg_color = (66.0/255.0, 66.0/255.0, 66.0/255.0, 1.0)
         else:
             bg_color = (0.258823543, 0.258823543, 0.258823543, 1.0)
 
@@ -215,14 +349,14 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
 
         if prefs is not None:
             try:
-                entity_color = tuple(getattr(prefs, 'entity_color', (0.435294, 0.435294, 0.435294, 1.0)))
+                entity_color = tuple(getattr(prefs, 'entity_color', (111.0/255.0, 111.0/255.0, 111.0/255.0, 1.0)))
             except Exception:
-                entity_color = (0.435294, 0.435294, 0.435294, 1.0)
+                entity_color = (111.0/255.0, 111.0/255.0, 111.0/255.0, 1.0)
 
             try:
-                shell_color = tuple(getattr(prefs, 'shell_color', (0.580392, 0.580392, 0.580392, 1.0)))
+                shell_color = tuple(getattr(prefs, 'shell_color', (148.0/255.0, 148.0/255.0, 148.0/255.0, 1.0)))
             except Exception:
-                shell_color = (0.580392, 0.580392, 0.580392, 1.0)
+                shell_color = (148.0/255.0, 148.0/255.0, 148.0/255.0, 1.0)
 
             # clamp colors
             entity_color = _clamp_color_tuple(entity_color, length=4)
@@ -305,8 +439,8 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
         prefs = get_addon_preferences(context)
 
-        default_res = 4096
-        min_res = 2048
+        default_res = 2048
+        min_res = 1024
         shot_res = default_res
 
         if prefs is not None:
@@ -341,8 +475,24 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                 out_dir = Path('.')
 
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        # create output subfolder Minimap_<blend_file_name>
+        try:
+            blend_fp = Path(bpy.data.filepath)
+            blend_name = blend_fp.stem if blend_fp.exists() else None
+        except Exception:
+            blend_name = None
+
+        if not blend_name:
+            blend_name = 'Untitled'
+
+        target_dir = out_dir / f"Minimap_{blend_name}"
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
         filename = f"minimap_{timestamp}.png"
-        out_path = out_dir / filename
+        out_path = target_dir / filename
 
         scene.render.image_settings.file_format = 'PNG'
         scene.render.resolution_x = shot_res
@@ -371,6 +521,28 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
         if area_for_render is None or region is None or space_for_render is None:
             self.report({'ERROR'}, "No 3D Viewport found for rendering")
+            return {'CANCELLED'}
+        # Validate MinimapCam exists and that the current 3D View is in Camera view BEFORE starting
+        cam_obj = None
+        for obj in bpy.data.objects:
+            if obj.type == 'CAMERA' and obj.name == 'MinimapCam':
+                cam_obj = obj
+                break
+
+        if cam_obj is None:
+            self.report({'WARNING'}, "MinimapCam not found.")
+            return {'CANCELLED'}
+
+        # Check current 3D view is in camera view
+        try:
+            current_persp = None
+            if hasattr(space_for_render, 'region_3d') and space_for_render.region_3d is not None:
+                current_persp = getattr(space_for_render.region_3d, 'view_perspective', None)
+        except Exception:
+            current_persp = None
+
+        if current_persp != 'CAMERA':
+            self.report({'WARNING'}, "Enable Toggle Camera View before making a shot.")
             return {'CANCELLED'}
         # Prepare temporary viewport state: activate MinimapCam, switch to camera view and hide gizmos/overlays
         cam_obj = None
@@ -425,14 +597,368 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
             # perform OpenGL viewport render in the 3D view context
             try:
                 if hasattr(context, 'temp_override'):
-                    with context.temp_override(window=context.window, area=area_for_render, region=region, space=space_for_render):
+                    render_override = context.temp_override(window=context.window, area=area_for_render, region=region, space=space_for_render)
+                else:
+                    render_override = None
+
+                if render_override is not None:
+                    render_ctx = render_override
+                else:
+                    render_ctx = None
+
+                # save original film_transparent setting and force transparent film for layer renders when needed
+                orig_film_transparent = getattr(scene.render, 'film_transparent', False)
+
+                if render_ctx is not None:
+                    with render_ctx:
                         bpy.ops.render.opengl(write_still=True)
                 else:
                     override = {'window': context.window, 'screen': context.screen, 'area': area_for_render, 'region': region, 'scene': scene}
                     bpy.ops.render.opengl(override, write_still=True)
             except Exception as e:
                 self.report({'ERROR'}, f"OpenGL render failed: {e}")
-                return {'CANCELLED'}
+                # restore UI state in finally below and cancel
+                raise
+
+            # After main minimap render, produce layered PNGs while gizmo/overlay remain disabled
+            try:
+                # --- Layered PNG export (background, shell, entity, custom) ---
+                try:
+                    # Gather preferences colors
+                    prefs = get_addon_preferences(context)
+                    if prefs is None:
+                        prefs = None
+
+                    try:
+                        entity_color = _clamp_color_tuple(tuple(getattr(prefs, 'entity_color', (111.0/255.0, 111.0/255.0, 111.0/255.0, 1.0))), length=4)
+                    except Exception:
+                        entity_color = _clamp_color_tuple((111.0/255.0, 111.0/255.0, 111.0/255.0, 1.0), length=4)
+
+                    try:
+                        shell_color = _clamp_color_tuple(tuple(getattr(prefs, 'shell_color', (148.0/255.0, 148.0/255.0, 148.0/255.0, 1.0))), length=4)
+                    except Exception:
+                        shell_color = _clamp_color_tuple((148.0/255.0, 148.0/255.0, 148.0/255.0, 1.0), length=4)
+
+                    try:
+                        bg_color = _clamp_color_tuple(tuple(getattr(prefs, 'background_color', (66.0/255.0, 66.0/255.0, 66.0/255.0, 1.0))), length=4)
+                    except Exception:
+                        bg_color = _clamp_color_tuple((66.0/255.0, 66.0/255.0, 66.0/255.0, 1.0), length=4)
+
+                    scene = context.scene
+
+                    # Collect all objects and save original visibility/color states
+                    all_objects = list(bpy.data.objects)
+                    orig_states = {}
+                    for obj in all_objects:
+                        orig_states[obj.name] = {
+                            'hide_viewport': getattr(obj, 'hide_viewport', False),
+                            'hide_render': getattr(obj, 'hide_render', False),
+                            'color': _clamp_color_tuple(tuple(getattr(obj, 'color', (1.0, 1.0, 1.0, 1.0))), length=4)
+                        }
+
+                    # Classification sets based on object colors only
+                    shell_set = set()
+                    custom_set = set()
+                    entity_set = set()
+                    walls_set = set()
+
+                    def color_matches(a, b, eps=1e-6):
+                        try:
+                            for i in range(3):
+                                if abs(a[i] - b[i]) > eps:
+                                    return False
+                        except Exception:
+                            return False
+                        return True
+
+                    for obj in all_objects:
+                        try:
+                            if getattr(obj, 'type', None) not in ('MESH', 'CURVE', 'SURFACE', 'META') and obj.type != 'EMPTY':
+                                continue
+                        except Exception:
+                            continue
+
+                        col = orig_states.get(obj.name, {}).get('color', (1.0, 1.0, 1.0, 1.0))
+
+                        # classify by matching colors (exclusive)
+                        if color_matches(col, bg_color):
+                            walls_set.add(obj)
+                        elif color_matches(col, shell_color):
+                            shell_set.add(obj)
+                        elif color_matches(col, entity_color):
+                            entity_set.add(obj)
+                        else:
+                            # custom: differs from entity, shell, and background
+                            custom_set.add(obj)
+
+                    # Helper to perform a viewport OpenGL render with specific visible objects
+                    def render_layer(filename_path, visible_objs, transparent=True, opaque_bg=False, bg_override=None):
+                        # prepare filepath
+                        scene.render.filepath = str(filename_path)
+                        print(f"[Render] render_layer start: {filename_path}, transparent={transparent}, bg_override={bg_override}")
+                        # ensure PNG with alpha for transparency layers
+                        try:
+                            if transparent:
+                                scene.render.image_settings.color_mode = 'RGBA'
+                            else:
+                                scene.render.image_settings.color_mode = 'RGB'
+                        except Exception:
+                            pass
+                        # optionally override viewport background color for this render (useful for walls layer)
+                        sh = None
+                        orig_sh_bg = None
+                        try:
+                            if bg_override is not None and hasattr(space_for_render, 'shading'):
+                                sh = getattr(space_for_render, 'shading')
+                                if sh is not None and hasattr(sh, 'background_color'):
+                                    try:
+                                        orig_sh_bg = tuple(getattr(sh, 'background_color'))
+                                    except Exception:
+                                        orig_sh_bg = None
+                                    try:
+                                        # bg_override expected as (r,g,b)
+                                        sh.background_color = (bg_override[0], bg_override[1], bg_override[2])
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            sh = None
+                        # hide everything first
+                        try:
+                            for o in all_objects:
+                                try:
+                                    o.hide_viewport = True
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+
+                        # unhide requested visible objects
+                        try:
+                            for o in visible_objs:
+                                try:
+                                    o.hide_viewport = False
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+
+                        # configure transparency for this render
+                        try:
+                            # set film_transparent True for transparent layers so alpha channel is produced
+                            if transparent:
+                                try:
+                                    scene.render.film_transparent = True
+                                except Exception:
+                                    pass
+                            else:
+                                try:
+                                    scene.render.film_transparent = False
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+
+                        # perform the OpenGL render in the 3D view context
+                        try:
+                            print(f"[Render] performing OpenGL render to {filename_path}")
+                            if render_ctx is not None:
+                                with render_ctx:
+                                    bpy.ops.render.opengl(write_still=True)
+                            else:
+                                override = {'window': context.window, 'screen': context.screen, 'area': area_for_render, 'region': region, 'scene': scene}
+                                bpy.ops.render.opengl(override, write_still=True)
+                            print(f"[Render] OpenGL render complete for {filename_path}")
+                        except Exception:
+                            raise
+                        finally:
+                            # restore original hide_viewport states for all objects
+                            try:
+                                for o in all_objects:
+                                    st = orig_states.get(o.name)
+                                    if st is not None:
+                                        try:
+                                            o.hide_viewport = st.get('hide_viewport', False)
+                                        except Exception:
+                                            pass
+                            except Exception:
+                                pass
+
+                        # post-process image to set true alpha where background matches (for transparent layers)
+                        try:
+                            if transparent and filename_path is not None:
+                                print(f"[Render] post-process start for {filename_path}")
+                                # do not modify the background.png
+                                try:
+                                    if filename_path.name.lower() != 'background.png':
+                                        # load image into Blender and edit pixels
+                                        try:
+                                            img = None
+                                            fp_str = str(filename_path)
+                                            # remove existing image with same filepath to force reload
+                                            for existing in bpy.data.images:
+                                                try:
+                                                    if existing.filepath == fp_str:
+                                                        img = existing
+                                                        break
+                                                except Exception:
+                                                    continue
+                                            if img is None:
+                                                img = bpy.data.images.load(fp_str)
+
+                                            # ensure image has 4 channels
+                                            if img.channels < 4:
+                                                try:
+                                                    img.use_alpha = True
+                                                except Exception:
+                                                    pass
+
+                                            pixels = list(img.pixels[:])
+                                            changed = False
+                                            eps = 1e-6
+                                            try:
+                                                # if bg_override provided, compare against that (rgb)
+                                                if bg_override is not None:
+                                                    bg = (bg_override[0], bg_override[1], bg_override[2], 1.0)
+                                                else:
+                                                    bg = bg_color
+                                            except Exception:
+                                                bg = (0.0, 0.0, 0.0, 1.0)
+
+                                            for i in range(0, len(pixels), img.channels):
+                                                try:
+                                                    r = pixels[i]
+                                                    g = pixels[i+1]
+                                                    b = pixels[i+2]
+                                                except Exception:
+                                                    continue
+
+                                                if abs(r - bg[0]) <= eps and abs(g - bg[1]) <= eps and abs(b - bg[2]) <= eps:
+                                                    # set alpha to 0
+                                                    if img.channels >= 4:
+                                                        if pixels[i+3] != 0.0:
+                                                            pixels[i+3] = 0.0
+                                                            changed = True
+
+                                            if changed:
+                                                try:
+                                                    # write back modified pixels
+                                                    img.pixels[:] = pixels
+                                                    img.filepath_raw = fp_str
+                                                    img.file_format = 'PNG'
+                                                    img.save()
+                                                except Exception:
+                                                    pass
+
+                                            # cleanup loaded image from Blender data to avoid lingering memory
+                                            try:
+                                                if img is not None:
+                                                    bpy.data.images.remove(img)
+                                                    print(f"[Render] removed loaded image after postprocess: {fp_str}")
+                                            except Exception:
+                                                pass
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
+                                print(f"[Render] post-process end for {filename_path}")
+                        except Exception:
+                            pass
+
+                        # restore original shading background if overridden
+                        try:
+                            if sh is not None and orig_sh_bg is not None:
+                                try:
+                                    sh.background_color = orig_sh_bg
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+
+                    # Perform background.png: hide all objects so only background color visible
+                    try:
+                        background_fp = target_dir / 'background.png'
+                        render_layer(background_fp, [], transparent=False, opaque_bg=True)
+                    except Exception:
+                        pass
+
+                    # shell.png: only shell objects visible, transparent background
+                    try:
+                        shell_fp = target_dir / 'shell.png'
+                        render_layer(shell_fp, shell_set, transparent=True)
+                    except Exception:
+                        pass
+
+                    # entity.png: only entity objects visible, transparent background
+                    try:
+                        entity_fp = target_dir / 'entity.png'
+                        render_layer(entity_fp, entity_set, transparent=True)
+                    except Exception:
+                        pass
+
+                    # walls.png: only walls objects visible (objects whose color equals background), transparent background
+                    try:
+                        walls_fp = target_dir / 'walls.png'
+                        # use a temporary background override color (magenta) so objects matching the original background
+                        # remain distinguishable; then post-process will alpha out the magenta background
+                        render_layer(walls_fp, walls_set, transparent=True, bg_override=(1.0, 0.0, 1.0))
+                    except Exception:
+                        pass
+
+                    # custom.png: only custom painted objects visible, transparent background
+                    try:
+                        custom_fp = target_dir / 'custom.png'
+                        render_layer(custom_fp, custom_set, transparent=True)
+                    except Exception:
+                        pass
+
+                    self.report({'INFO'}, "Layered PNG export completed.")
+
+                    print("[DEBUG] Potrace disabled")
+
+                    return {'FINISHED'}
+                    # Generate Potrace-ready binary raster files for each PNG layer.
+                    try:
+                        # Always use BMP for Potrace-ready export
+                        fmt = 'BMP'
+
+                        layer_names = ['background', 'shell', 'entity', 'walls', 'custom']
+                        bg_c = (0.0, 0.0, 0.0, 1.0)
+                        try:
+                            # background color preference still used for alpha post-processing
+                            prefs = get_addon_preferences(context)
+                            if prefs is not None:
+                                bg_c = _clamp_color_tuple(getattr(prefs, 'background_color', bg_c), 4)
+                        except Exception:
+                            pass
+
+                        # Convert rendered PNGs to BMP and remove temporary PNGs
+                        try:
+                            print("[Potrace] starting conversion PNG -> BMP")
+                            export_potrace_ready_files(target_dir, layer_names, bg_c, fmt=fmt)
+                            print("[Potrace] conversion complete")
+                            # remove temporary PNG files after conversion
+                            for name in layer_names:
+                                try:
+                                    png_fp = target_dir / f"{name}.png"
+                                    print(f"[Potrace] checking tmp PNG: {png_fp}")
+                                    if png_fp.exists():
+                                        try:
+                                            png_fp.unlink()
+                                            print(f"[Potrace] removed tmp PNG: {png_fp}")
+                                        except Exception as e:
+                                            print(f"Failed to remove temporary PNG {png_fp}: {e}")
+                                except Exception as e:
+                                    print(f"Error during PNG cleanup for {name}: {e}")
+                        except Exception as e:
+                            print(f"Potrace export error: {e}")
+                    except Exception:
+                        pass
+                except Exception:
+                    # do not interrupt normal flow if layered export fails
+                    pass
+            except Exception:
+                # swallow layered export exceptions to ensure UI restore in finally
+                pass
         finally:
             # restore temporary UI state
             try:
@@ -462,6 +988,8 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
         except Exception as e:
             self.report({'ERROR'}, f"Error verifying save: {e}")
             return {'CANCELLED'}
+
+
 
         return {'FINISHED'}
 
@@ -586,15 +1114,61 @@ class GTAMINIMAP_OT_apply_color_selected(bpy.types.Operator):
         for obj in mesh_objs:
             try:
                 c = _clamp_color_tuple(color, length=4)
+                print("CUSTOM PREF:", color)
+                print("AFTER CLAMP:", c)
                 obj.color = (c[0], c[1], c[2], c[3])
             except Exception:
                 pass
 
         self.report({'INFO'}, f"Applied custom paint color to {len(mesh_objs)} mesh object(s).")
         return {'FINISHED'}
+
+
+class GTAMINIMAP_OT_reset_colors(bpy.types.Operator):
+    """Reset Minimap Colors"""
+    bl_idname = "gtaminimap.reset_colors"
+    bl_label = "Reset Minimap Colors"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        try:
+            prefs = context.preferences.addons[__package__].preferences
+        except Exception:
+            self.report({'ERROR'}, "Addon preferences not found.")
+            return {'CANCELLED'}
+
+        # linear values for:
+        # Entity     #6F6F6F
+        # Shell      #949494
+        # Background #424242
+
+        prefs.entity_color = (
+            0.158961,
+            0.158961,
+            0.158961,
+            1.0
+        )
+
+        prefs.shell_color = (
+            0.302126,
+            0.302126,
+            0.302126,
+            1.0
+        )
+
+        prefs.background_color = (
+            0.051269,
+            0.051269,
+            0.051269,
+            1.0
+        )
+
+        self.report({'INFO'}, "Minimap colors reset.")
+        return {'FINISHED'}
 classes = (
     GTAMINIMAP_OT_prepare_scene,
     GTAMINIMAP_OT_make_shot,
     GTAMINIMAP_OT_apply_color_selected,
     GTAMINIMAP_OT_exit_minimap_mode,
+    GTAMINIMAP_OT_reset_colors,
 )

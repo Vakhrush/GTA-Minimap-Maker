@@ -5,7 +5,6 @@ bl_info = {
     "blender": (5, 1, 0),
     "location": "View3D > Sidebar > GTA Tools",
     "description": "Tools to prepare and render minimap shots for GTA-style maps",
-    "doc_url": "https://github.com/Bigbigdog/GTA-Minimap-Maker",
     "warning": "",
     "wiki_url": "",
     "category": "3D View",
