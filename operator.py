@@ -96,45 +96,35 @@ def _save_potrace_ready(png_path, out_path, bg_color, is_background=False, fmt='
 
                 mask[y * width + x] = bool(present)
 
-        # Output (BMP only)
-        out_fmt = 'BMP'
-        if out_fmt == 'BMP':
-            # create new image in Blender with RGB channels and save as BMP
-            try:
-                name = f"potrace_tmp_{png_path.stem}"
-                new_img = bpy.data.images.new(name, width=width, height=height, alpha=False, float_buffer=False)
-                pix = [0.0] * (width * height * 3)
-                for y in range(height):
+        # Output
+        out_fmt = (fmt or 'PBM').upper()
+
+        if out_fmt == 'PBM':
+            with open(out_path, 'wb') as f:
+                header = f"P4\n{width} {height}\n".encode('ascii')
+                f.write(header)
+
+                for y in reversed(range(height)):
+                    byte = 0
+                    bits = 0
+
                     for x in range(width):
                         m = mask[y * width + x]
-                        v = 0.0 if m else 1.0
-                        idxp = (y * width + x) * 3
-                        pix[idxp] = v
-                        pix[idxp + 1] = v
-                        pix[idxp + 2] = v
-                try:
-                    new_img.pixels = pix
-                except Exception:
-                    # some Blender builds require iterative assignment
-                    for i in range(len(pix)):
-                        new_img.pixels[i] = pix[i]
 
-                try:
-                    print(f"[Potrace] saving BMP: {out_path}")
-                    new_img.filepath_raw = str(out_path)
-                    new_img.file_format = 'BMP'
-                    new_img.save()
-                    print(f"[Potrace] saved BMP: {out_path}")
-                except Exception as e:
-                    print(f"Potrace export error: {e}")
-                try:
-                    bpy.data.images.remove(new_img)
-                except Exception as e:
-                    print(f"Potrace export error: {e}")
-            except Exception:
-                return False
+                        bit = 1 if m else 0
 
-        # PBM support removed
+                        byte = (byte << 1) | bit
+                        bits += 1
+
+                        if bits == 8:
+                            f.write(bytes([byte]))
+                            byte = 0
+                            bits = 0
+
+                    if bits > 0:
+                        byte <<= (8 - bits)
+                        f.write(bytes([byte]))
+
 
         # cleanup loaded image
         try:
@@ -151,7 +141,7 @@ def _save_potrace_ready(png_path, out_path, bg_color, is_background=False, fmt='
         return False
 
 
-def export_potrace_ready_files(target_dir, layer_names, bg_color, fmt='BMP'):
+def export_potrace_ready_files(target_dir, layer_names, bg_color, fmt='PBM'):
     """Export Potrace-ready files for each layer name in layer_names list."""
     print(f"[Potrace] export_potrace_ready_files called with target_dir={target_dir}, fmt={fmt}")
     results = {}
@@ -913,46 +903,31 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
                     self.report({'INFO'}, "Layered PNG export completed.")
 
-                    print("[DEBUG] Potrace disabled")
-
-                    return {'FINISHED'}
-                    # Generate Potrace-ready binary raster files for each PNG layer.
+                    # Generate Potrace-ready files
                     try:
-                        # Always use BMP for Potrace-ready export
-                        fmt = 'BMP'
-
                         layer_names = ['background', 'shell', 'entity', 'walls', 'custom']
+
                         bg_c = (0.0, 0.0, 0.0, 1.0)
+
                         try:
-                            # background color preference still used for alpha post-processing
-                            prefs = get_addon_preferences(context)
                             if prefs is not None:
-                                bg_c = _clamp_color_tuple(getattr(prefs, 'background_color', bg_c), 4)
+                                bg_c = _clamp_color_tuple(
+                                    getattr(prefs, 'background_color', bg_c),
+                                    4
+                                )
                         except Exception:
                             pass
 
-                        # Convert rendered PNGs to BMP and remove temporary PNGs
-                        try:
-                            print("[Potrace] starting conversion PNG -> BMP")
-                            export_potrace_ready_files(target_dir, layer_names, bg_c, fmt=fmt)
-                            print("[Potrace] conversion complete")
-                            # remove temporary PNG files after conversion
-                            for name in layer_names:
-                                try:
-                                    png_fp = target_dir / f"{name}.png"
-                                    print(f"[Potrace] checking tmp PNG: {png_fp}")
-                                    if png_fp.exists():
-                                        try:
-                                            png_fp.unlink()
-                                            print(f"[Potrace] removed tmp PNG: {png_fp}")
-                                        except Exception as e:
-                                            print(f"Failed to remove temporary PNG {png_fp}: {e}")
-                                except Exception as e:
-                                    print(f"Error during PNG cleanup for {name}: {e}")
-                        except Exception as e:
-                            print(f"Potrace export error: {e}")
-                    except Exception:
-                        pass
+                        export_potrace_ready_files(
+                            target_dir,
+                            layer_names,
+                            bg_c,
+                            fmt='PBM'
+                        )
+
+                    except Exception as e:
+                        print(f"Potrace export error: {e}")
+
                 except Exception:
                     # do not interrupt normal flow if layered export fails
                     pass
@@ -992,9 +967,6 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
 
         return {'FINISHED'}
-
-
-
 
 
 class GTAMINIMAP_OT_exit_minimap_mode(bpy.types.Operator):

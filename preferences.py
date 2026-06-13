@@ -79,7 +79,5 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         cbox.label(text="Custom Paint")
         cbox.prop(self, 'custom_paint_color')
 
-        # Trace / Export: using BMP only
-
 
 classes = (GTAMINIMAP_Preferences,)
