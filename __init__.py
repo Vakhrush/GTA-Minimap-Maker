@@ -12,6 +12,7 @@ bl_info = {
 
 import bpy
 
+from bpy.props import StringProperty
 from . import operator, panel, preferences
 
 
@@ -19,6 +20,11 @@ modules = (operator, panel, preferences)
 
 
 def register():
+    bpy.types.Scene.mlo_name = StringProperty(
+        name="MLO Name",
+        default=""
+    )
+
     for mod in modules:
         if hasattr(mod, "classes"):
             for cls in mod.classes:
@@ -26,6 +32,9 @@ def register():
 
 
 def unregister():
+
+    del bpy.types.Scene.mlo_name
+
     for mod in reversed(modules):
         if hasattr(mod, "classes"):
             for cls in reversed(mod.classes):

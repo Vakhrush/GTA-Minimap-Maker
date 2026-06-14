@@ -11,6 +11,13 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         default=""
     )
 
+    jpexs_path: bpy.props.StringProperty(
+        name="JPEXS Folder",
+        description="Folder containing ffdec.bat",
+        subtype='DIR_PATH',
+        default=""
+    )
+
     shot_resolution: bpy.props.IntProperty(
         name="Shot Resolution",
         description="Resolution for the minimap shot (pixels)",
@@ -66,6 +73,7 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         layout = self.layout
         layout.label(text="GTA Minimap Maker Preferences")
         layout.prop(self, "output_path")
+        layout.prop(self, "jpexs_path")
         layout.prop(self, "shot_resolution")
         layout.separator()
         box = layout.box()

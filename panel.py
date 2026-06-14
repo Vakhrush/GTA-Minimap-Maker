@@ -14,8 +14,6 @@ class GTAMINIMAP_PT_panel(bpy.types.Panel):
         layout.label(text="Minimap Tools")
         layout.operator('gtaminimap.prepare_scene', icon='SCENE')
         layout.operator('gtaminimap.exit_minimap_mode', icon='LOOP_BACK')
-        layout.separator()
-        layout.operator('gtaminimap.make_shot', icon='RENDER_STILL')
 
         # Preferences-based color quick settings (read-only here; main settings in Add-on Preferences)
         layout.separator()
@@ -39,6 +37,14 @@ class GTAMINIMAP_PT_panel(bpy.types.Panel):
             cbox.operator('gtaminimap.apply_color_selected', icon='BRUSH_DATA')
         else:
             box.label(text="Open Add-on Preferences to configure colors")
+
+        # contains MLO name
+        layout.separator()
+        layout.prop(context.scene, "mlo_name", text="MLO Name")
+
+        # final step
+        layout.separator()
+        layout.operator('gtaminimap.make_shot', icon='RENDER_STILL')
 
 
 classes = (GTAMINIMAP_PT_panel,)

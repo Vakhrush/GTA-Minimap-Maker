@@ -2,6 +2,7 @@ import bpy
 import math
 import subprocess
 from pathlib import Path
+import shutil
 
 def _clamp_color_tuple(col, length=4):
     """Ensure color tuple components are within 0.0-1.0 and return requested length."""
