@@ -236,6 +236,52 @@ def recolor_svg(svg_path, color):
         print(f"[SVG] Recolor error: {e}")
 
 
+def merge_svg_layers(svg_files, output_svg):
+    try:
+        all_groups = []
+
+        viewbox = "0 0 2048 2048"
+
+        for svg_file in svg_files:
+            if not svg_file.exists():
+                continue
+
+            with open(svg_file, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            import re
+
+            vb = re.search(r'viewBox="([^"]+)"', content)
+            if vb:
+                viewbox = vb.group(1)
+
+            groups = re.findall(
+                r"<g.*?</g>",
+                content,
+                flags=re.DOTALL
+            )
+
+            all_groups.extend(groups)
+
+        with open(output_svg, "w", encoding="utf-8") as f:
+            f.write(
+f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+viewBox="{viewbox}">
+'''
+            )
+
+            for group in all_groups:
+                f.write(group + "\n")
+
+            f.write("</svg>\n")
+
+        print(f"[SVG] Merged: {output_svg}")
+
+    except Exception as e:
+        print(f"[SVG] Merge error: {e}")
+
+
 def object_is_sollumz(obj):
     """Heuristic: detect Sollumz-created objects.
 
@@ -1021,6 +1067,55 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
                                     elif layer == "custom":
                                         recolor_svg(svg_fp, (1.0, 1.0, 1.0, 1.0))
+
+                        final_svg = target_dir / "1.svg"
+
+                        merge_svg_layers(
+                            [
+                                target_dir / "background.svg",
+                                target_dir / "shell.svg",
+                                target_dir / "entity.svg",
+                                target_dir / "walls.svg",
+                                target_dir / "custom.svg",
+                            ],
+                            final_svg
+                        )
+
+                        # Remove intermediate SVG files
+                        for layer in layer_names:
+                            try:
+                                svg_fp = target_dir / f"{layer}.svg"
+
+                                if svg_fp.exists():
+                                    svg_fp.unlink()
+                                    print(f"[Cleanup] Removed: {svg_fp}")
+
+                            except Exception as e:
+                                print(f"[Cleanup] SVG remove error: {e}")
+
+                        # Remove intermediate PNG files
+                        for layer in layer_names:
+                            try:
+                                png_fp = target_dir / f"{layer}.png"
+
+                                if png_fp.exists():
+                                    png_fp.unlink()
+                                    print(f"[Cleanup] Removed: {png_fp}")
+
+                            except Exception as e:
+                                print(f"[Cleanup] PNG remove error: {e}")
+
+                        # Remove PBM files
+                        for layer in layer_names:
+                            try:
+                                pbm_fp = target_dir / f"{layer}.pbm"
+
+                                if pbm_fp.exists():
+                                    pbm_fp.unlink()
+                                    print(f"[Cleanup] Removed: {pbm_fp}")
+
+                            except Exception as e:
+                                print(f"[Cleanup] PBM remove error: {e}")
 
                     except Exception as e:
                         print(f"Potrace export error: {e}")
