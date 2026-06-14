@@ -1,7 +1,7 @@
 import bpy
 import math
+import subprocess
 from pathlib import Path
-
 
 def _clamp_color_tuple(col, length=4):
     """Ensure color tuple components are within 0.0-1.0 and return requested length."""
@@ -38,14 +38,13 @@ def get_object_hierarchy(root_object):
     return [root_object, *root_object.children_recursive]
 
 
-def _save_potrace_ready(png_path, out_path, bg_color, is_background=False, fmt='BMP'):
+def _save_potrace_ready(png_path, out_path, bg_color):
     """Create a Potrace-ready black/white file from a PNG.
 
     - png_path: Path to source PNG
     - out_path: Path to output file (with desired extension)
     - bg_color: tuple(r,g,b,a)
     - is_background: if True, pixels that are visible become black (background layer)
-    - fmt: 'BMP' or 'PBM'
     """
     try:
         print(f"[Potrace] _save_potrace_ready start: png_path={png_path}, out_path={out_path}")
@@ -97,33 +96,30 @@ def _save_potrace_ready(png_path, out_path, bg_color, is_background=False, fmt='
                 mask[y * width + x] = bool(present)
 
         # Output
-        out_fmt = (fmt or 'PBM').upper()
+        with open(out_path, 'wb') as f:
+            header = f"P4\n{width} {height}\n".encode('ascii')
+            f.write(header)
 
-        if out_fmt == 'PBM':
-            with open(out_path, 'wb') as f:
-                header = f"P4\n{width} {height}\n".encode('ascii')
-                f.write(header)
+            for y in reversed(range(height)):
+                byte = 0
+                bits = 0
 
-                for y in reversed(range(height)):
-                    byte = 0
-                    bits = 0
+                for x in range(width):
+                    m = mask[y * width + x]
 
-                    for x in range(width):
-                        m = mask[y * width + x]
+                    bit = 1 if m else 0
 
-                        bit = 1 if m else 0
+                    byte = (byte << 1) | bit
+                    bits += 1
 
-                        byte = (byte << 1) | bit
-                        bits += 1
-
-                        if bits == 8:
-                            f.write(bytes([byte]))
-                            byte = 0
-                            bits = 0
-
-                    if bits > 0:
-                        byte <<= (8 - bits)
+                    if bits == 8:
                         f.write(bytes([byte]))
+                        byte = 0
+                        bits = 0
+
+                if bits > 0:
+                    byte <<= (8 - bits)
+                    f.write(bytes([byte]))
 
 
         # cleanup loaded image
@@ -141,24 +137,103 @@ def _save_potrace_ready(png_path, out_path, bg_color, is_background=False, fmt='
         return False
 
 
-def export_potrace_ready_files(target_dir, layer_names, bg_color, fmt='PBM'):
-    """Export Potrace-ready files for each layer name in layer_names list."""
-    print(f"[Potrace] export_potrace_ready_files called with target_dir={target_dir}, fmt={fmt}")
+def export_potrace_ready_files(target_dir, layer_names, bg_color):
+    """Export Potrace-ready PBM files for Potrace."""
+    print(f"[Potrace] export_potrace_ready_files called with target_dir={target_dir}")
+
     results = {}
+
     for name in layer_names:
         try:
             print(f"[Potrace] start export for layer: {name}")
+
             png_fp = target_dir / f"{name}.png"
-            out_fp = target_dir / f"{name}.{fmt.lower()}"
+            out_fp = target_dir / f"{name}.pbm"
+
             print(f"[Potrace] Potrace output path: {out_fp}")
-            is_bg = (name.lower() == 'background')
-            ok = _save_potrace_ready(png_fp, out_fp, bg_color, is_background=is_bg, fmt=fmt)
+
+            is_bg = (name.lower() == "background")
+
+            ok = _save_potrace_ready(
+                png_fp,
+                out_fp,
+                bg_color,
+            )
+
             results[name] = ok
+
             print(f"[Potrace] export result for {name}: {ok}")
+
         except Exception as e:
             print(f"Potrace export error: {e}")
             results[name] = False
+
     return results
+
+
+def run_potrace(pbm_path, svg_path):
+    try:
+        potrace_path = Path(__file__).parent / "potrace.exe"
+
+        subprocess.run(
+            [
+                str(potrace_path),
+                str(pbm_path),
+                "-s",
+                "--alphamax", "1.0",
+                "--opttolerance", "2.0",
+                "--turdsize", "20",
+                "-o",
+                str(svg_path)
+            ],
+            check=True
+        )
+
+        print(f"[Potrace] SVG created: {svg_path}")
+        return True
+
+    except Exception as e:
+        print(f"[Potrace] Error: {e}")
+        return False
+
+
+def linear_to_srgb(c):
+    if c <= 0.0031308:
+        return 12.92 * c
+    return 1.055 * (c ** (1.0 / 2.4)) - 0.055
+
+
+def svg_color_to_hex(color):
+    r = int(round(linear_to_srgb(color[0]) * 255))
+    g = int(round(linear_to_srgb(color[1]) * 255))
+    b = int(round(linear_to_srgb(color[2]) * 255))
+
+    r = max(0, min(255, r))
+    g = max(0, min(255, g))
+    b = max(0, min(255, b))
+
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
+def recolor_svg(svg_path, color):
+    try:
+        hex_color = svg_color_to_hex(color)
+
+        with open(svg_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        content = content.replace(
+            'fill="#000000"',
+            f'fill="{hex_color}"'
+        )
+
+        with open(svg_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        print(f"[SVG] Recolored: {svg_path} -> {hex_color}")
+
+    except Exception as e:
+        print(f"[SVG] Recolor error: {e}")
 
 
 def object_is_sollumz(obj):
@@ -921,9 +996,31 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                         export_potrace_ready_files(
                             target_dir,
                             layer_names,
-                            bg_c,
-                            fmt='PBM'
+                            bg_c
                         )
+
+                        for layer in layer_names:
+                            pbm_fp = target_dir / f"{layer}.pbm"
+                            svg_fp = target_dir / f"{layer}.svg"
+
+                            if pbm_fp.exists():
+
+                                if run_potrace(pbm_fp, svg_fp):
+
+                                    if layer == "background":
+                                        recolor_svg(svg_fp, bg_color)
+
+                                    elif layer == "shell":
+                                        recolor_svg(svg_fp, shell_color)
+
+                                    elif layer == "entity":
+                                        recolor_svg(svg_fp, entity_color)
+
+                                    elif layer == "walls":
+                                        recolor_svg(svg_fp, bg_color)
+
+                                    elif layer == "custom":
+                                        recolor_svg(svg_fp, (1.0, 1.0, 1.0, 1.0))
 
                     except Exception as e:
                         print(f"Potrace export error: {e}")
