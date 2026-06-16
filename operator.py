@@ -4,6 +4,91 @@ import subprocess
 from pathlib import Path
 import shutil
 
+def joaat(text):
+    text = text.lower()
+
+    h = 0
+
+    for c in text:
+        h += ord(c)
+        h &= 0xFFFFFFFF
+
+        h += (h << 10)
+        h &= 0xFFFFFFFF
+
+        h ^= (h >> 6)
+
+    h += (h << 3)
+    h &= 0xFFFFFFFF
+
+    h ^= (h >> 11)
+
+    h += (h << 15)
+    h &= 0xFFFFFFFF
+
+    return h
+
+def build_gfx(target_dir, mlo_name):
+    hash_value = joaat(mlo_name)
+
+    addon_dir = Path(__file__).parent
+
+    template_gfx = Path(__file__).parent / "intEXAMPLE.gfx"
+
+    temp_swf = target_dir / "intEXAMPLE.swf"
+    temp_xml = target_dir / "intEXAMPLE.xml"
+
+    final_gfx = target_dir / f"int{hash_value}.gfx"
+
+    prefs = bpy.context.preferences.addons[__package__].preferences
+
+    ffdec = Path(
+        bpy.path.abspath(prefs.jpexs_path)
+    ) / "ffdec-cli.exe"
+
+    shutil.copy2(template_gfx, temp_swf)
+
+    if not ffdec.exists():
+        raise Exception(
+            f"FFDec not found: {ffdec}"
+        )
+
+    subprocess.run(
+        [
+            str(ffdec),
+            "-swf2xml",
+            str(temp_swf),
+            str(temp_xml)
+        ],
+        check=True
+    )
+
+    with open(temp_xml, "r", encoding="utf-8") as f:
+        xml = f.read()
+
+    xml = xml.replace("col_name", mlo_name)
+    xml = xml.replace("EXAMPLE", str(hash_value))
+
+    with open(temp_xml, "w", encoding="utf-8") as f:
+        f.write(xml)
+
+    subprocess.run(
+        [
+            str(ffdec),
+            "-xml2swf",
+            str(temp_xml),
+            str(temp_swf)
+        ],
+        check=True
+    )
+
+    temp_swf.rename(final_gfx)
+
+    if temp_xml.exists():
+        temp_xml.unlink()
+
+    print(f"[GFX] Created: {final_gfx}")
+
 def _clamp_color_tuple(col, length=4):
     """Ensure color tuple components are within 0.0-1.0 and return requested length."""
     if col is None:
@@ -512,11 +597,16 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
                             except Exception:
                                 continue
 
+        if prefs is not None:
+            shot_res = prefs.shot_resolution
+        else:
+            shot_res = 2048
+
+        context.scene.render.resolution_x = shot_res
+        context.scene.render.resolution_y = shot_res
+
         self.report({'INFO'}, "Minimap mode enabled.")
         return {'FINISHED'}
-
-
-
 
 
 class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
@@ -1081,7 +1171,15 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                             ],
                             final_svg
                         )
+                        try:
+                            mlo_name = context.scene.mlo_name.strip()
 
+                            if mlo_name:
+                                build_gfx(target_dir, mlo_name)
+
+                        except Exception as e:
+                            print(f"[GFX] Error: {e}")
+                        
                         # Remove intermediate SVG files
                         for layer in layer_names:
                             try:
