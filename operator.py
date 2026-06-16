@@ -29,6 +29,17 @@ def joaat(text):
     return h
 
 def build_gfx(target_dir, mlo_name):
+    temp_swf = target_dir / "intEXAMPLE.swf"
+    temp_xml = target_dir / "intEXAMPLE.xml"
+
+    for f in (temp_swf, temp_xml):
+        try:
+            if f.exists():
+                f.unlink()
+                print(f"[GFX] Removed old temp: {f}")
+        except Exception as e:
+            print(f"[GFX] Cannot remove {f}: {e}")
+
     hash_value = joaat(mlo_name)
 
     addon_dir = Path(__file__).parent
@@ -81,6 +92,9 @@ def build_gfx(target_dir, mlo_name):
         ],
         check=True
     )
+
+    if final_gfx.exists():
+        final_gfx.unlink()
 
     temp_swf.rename(final_gfx)
 
