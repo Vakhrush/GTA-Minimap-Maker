@@ -445,11 +445,15 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
             cam_data = bpy.data.cameras.new(name="MinimapCam")
             cam_data.type = 'ORTHO'
             cam_obj = bpy.data.objects.new("MinimapCam", cam_data)
-            # required rotation: X=0, Y=0, Z=0
+            # required rotation&location: X=0, Y=0, and Z=0 only for rotation
             cam_obj.rotation_euler = (0.0, 0.0, 0.0)
             cam_obj.lock_rotation[0] = True
             cam_obj.lock_rotation[1] = True
             cam_obj.lock_rotation[2] = True
+
+            cam_obj.lock_location[0] = True
+            cam_obj.lock_location[1] = True
+            cam_obj.lock_location[2] = False
             # link to scene collection if not linked
             try:
                 if cam_obj.name not in context.scene.collection.objects:
@@ -765,6 +769,44 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
         if cam_obj is None:
             self.report({'WARNING'}, "MinimapCam not found.")
+            return {'CANCELLED'}
+
+        # Check Camera Shift <= 0
+        cam_data = cam_obj.data
+
+        eps = 1e-6
+
+        if abs(cam_data.shift_x) > eps or abs(cam_data.shift_y) > eps:
+            cam_data.shift_x = 0.0
+            cam_data.shift_y = 0.0
+
+            self.report(
+                {'WARNING'},
+                "Camera Shift is not supported. Shift X and Y have been reset."
+            )
+
+            return {'CANCELLED'}
+
+        # Check Camera Transform
+        loc = cam_obj.location
+        rot = cam_obj.rotation_euler
+
+        if (
+            abs(loc.x) > eps or
+            abs(loc.y) > eps or
+            abs(rot.x) > eps or
+            abs(rot.y) > eps or
+            abs(rot.z) > eps
+        ):
+            cam_obj.location.x = 0.0
+            cam_obj.location.y = 0.0
+            cam_obj.rotation_euler = (0.0, 0.0, 0.0)
+
+            self.report(
+                {'WARNING'},
+                "Camera transform is invalid. Location X/Y and Rotation have been reset."
+            )
+
             return {'CANCELLED'}
 
         # Check current 3D view is in camera view
