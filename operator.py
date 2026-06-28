@@ -3,6 +3,7 @@ import math
 import subprocess
 from pathlib import Path
 import shutil
+import re
 
 def joaat(text):
     text = text.lower()
@@ -79,6 +80,25 @@ def build_gfx(target_dir, mlo_name):
 
     xml = xml.replace("col_name", mlo_name)
     xml = xml.replace("EXAMPLE", str(hash_value))
+
+    ortho = bpy.context.scene.camera.data.ortho_scale
+
+    move = -17882
+
+    pattern = (
+        r'(<item type="PlaceObject2Tag" characterId="1".*?'
+        r'<matrix[^>]*translateX=")-?\d+(\.\d+)?'
+        r'(" translateY=")-?\d+(\.\d+)?(")'
+    )
+
+    xml = re.sub(
+        pattern,
+        rf'\g<1>{move}\g<3>{move}\g<5>',
+        xml,
+        flags=re.DOTALL
+    )
+
+    print(f"[GFX] translate = {move}")
 
     with open(temp_xml, "w", encoding="utf-8") as f:
         f.write(xml)
