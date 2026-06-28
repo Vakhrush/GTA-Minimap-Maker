@@ -93,6 +93,24 @@ def build_gfx(target_dir, mlo_name):
         check=True
     )
 
+    svg_file = target_dir / "1.svg"
+
+    if svg_file.exists():
+        subprocess.run(
+            [
+                str(ffdec),
+                "-importShapes",
+                str(temp_swf),
+                str(temp_swf),
+                str(target_dir),
+            ],
+            check=True
+        )
+
+        print("[GFX] Shape imported")
+    else:
+        raise Exception(f"SVG not found: {svg_file}")
+
     if final_gfx.exists():
         final_gfx.unlink()
 
