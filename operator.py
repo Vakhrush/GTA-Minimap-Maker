@@ -83,7 +83,7 @@ def build_gfx(target_dir, mlo_name):
 
     ortho = bpy.context.scene.camera.data.ortho_scale
 
-    move = -17882
+    move = -2928
 
     pattern = (
         r'(<item type="PlaceObject2Tag" characterId="1".*?'
