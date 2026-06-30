@@ -83,7 +83,10 @@ def build_gfx(target_dir, mlo_name):
 
     ortho = bpy.context.scene.camera.data.ortho_scale
 
-    move = -2928
+    # ---------- TranslateX&TranslateY ----------
+    JPEXS_MOVE_FACTOR = 98.9189
+
+    move = int(round(-ortho * JPEXS_MOVE_FACTOR))
 
     pattern = (
         r'(<item type="PlaceObject2Tag" characterId="1".*?'
@@ -98,7 +101,26 @@ def build_gfx(target_dir, mlo_name):
         flags=re.DOTALL
     )
 
+    # ---------- Scale ----------
+    JPEXS_SCALE_FACTOR = 0.00475
+
+    scale = ortho * JPEXS_SCALE_FACTOR
+
+    pattern = (
+        r'(<item type="PlaceObject2Tag" characterId="1".*?'
+        r'scaleX=")-?\d+(\.\d+)?'
+        r'(" scaleY=")-?\d+(\.\d+)?(")'
+    )
+
+    xml = re.sub(
+        pattern,
+        rf'\g<1>{scale:.8f}\g<3>{scale:.8f}\g<5>',
+        xml,
+        flags=re.DOTALL
+    )
+
     print(f"[GFX] translate = {move}")
+    print(f"[GFX] scale = {scale:.8f}")
 
     with open(temp_xml, "w", encoding="utf-8") as f:
         f.write(xml)
