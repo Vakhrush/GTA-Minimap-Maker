@@ -84,9 +84,8 @@ def build_gfx(target_dir, mlo_name):
     ortho = bpy.context.scene.camera.data.ortho_scale
 
     # ---------- TranslateX&TranslateY ----------
-    JPEXS_MOVE_FACTOR = 98.9189
 
-    move = int(round(-ortho * JPEXS_MOVE_FACTOR))
+    move = int(round(-(97.75 * ortho + 50.0)))
 
     pattern = (
         r'(<item type="PlaceObject2Tag" characterId="1".*?'
@@ -102,9 +101,8 @@ def build_gfx(target_dir, mlo_name):
     )
 
     # ---------- Scale ----------
-    JPEXS_SCALE_FACTOR = 0.00475
 
-    scale = ortho * JPEXS_SCALE_FACTOR
+    scale = 0.00468018 * ortho + 0.002236
 
     pattern = (
         r'(<item type="PlaceObject2Tag" characterId="1".*?'
