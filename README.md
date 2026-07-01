@@ -189,18 +189,6 @@ Temporary files are automatically removed.
 
 ## Support
 
-If GTA Minimap Maker has been useful for your projects, you can support future development with a donation.
+If GTA Minimap Maker has been useful for your projects and saved you time, you can support its future development.
 
-### Bitcoin (BTC)
-
-`bc1...`
-
-### Ethereum (ETH)
-
-`0x...`
-
-### USDT (TRC20)
-
-`T...`
-
-Every contribution helps improve the addon and add new features.
+➡️ See DONATE.md
