@@ -81,6 +81,8 @@ Recommended values:
 - 1024
 - 2048
 
+![Preferences](docs/preferences.gif)
+
 ---
 
 ## Workflow
@@ -94,6 +96,9 @@ Click:
 Switch the viewport to **Solid** shading.
 
 The addon automatically creates **MinimapCam**.
+
+
+![MinimapMode](docs/minimap_mode.gif)
 
 ---
 
@@ -116,6 +121,8 @@ Do not modify:
 - Camera RotationXYZ and LocationXY
 - Camera Shift
 
+![ConfigCam](docs/config_cam.gif)
+
 ---
 
 ### 3. Prepare the Scene
@@ -129,6 +136,8 @@ Examples:
 - Create white helper meshes to represent entrances, exits or other map icons (only one custom color).
 - Prepare the scene exactly as you want it to appear on the minimap.
 
+![Prepare](docs/prepare_scene.gif)
+
 ---
 
 ### 4. Enter MLO Name
@@ -136,6 +145,8 @@ Examples:
 Type the MLO name in the addon panel.
 
 The addon automatically calculates the JOAAT hash and names the exported GFX accordingly.
+
+![MLO](docs/mlo_name.gif)
 
 ---
 
@@ -157,6 +168,8 @@ The addon automatically:
 - imports the SVG into the GFX;
 - exports the finished minimap.
 
+![Shot](docs/make_shot.gif)
+
 ---
 
 ## Output
@@ -168,6 +181,8 @@ The output directory contains:
 - minimap preview PNG
 
 Temporary files are automatically removed.
+
+![Result](docs/result.png)
 
 ---
 
