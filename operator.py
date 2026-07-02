@@ -473,20 +473,56 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        # Ensure single MinimapCam: reuse if exists
-        cam_obj = None
-        for obj in bpy.data.objects:
-            if obj.type == 'CAMERA' and obj.name == 'MinimapCam':
-                cam_obj = obj
-                break
 
-        if cam_obj is None:
-            # create camera
-            cam_data = bpy.data.cameras.new(name="MinimapCam")
-            cam_data.type = 'ORTHO'
-            cam_obj = bpy.data.objects.new("MinimapCam", cam_data)
-            # required rotation&location: X=0, Y=0, and Z=0 only for rotation
-            cam_obj.rotation_euler = (0.0, 0.0, 0.0)
+        floors = int(context.scene.minimap_floors)
+
+        # Remove unnecessary Minimap cameras
+        for obj in list(bpy.data.objects):
+            if obj.type != 'CAMERA':
+                continue
+
+            if not obj.name.startswith("MinimapCam_"):
+                continue
+
+            try:
+                number = int(
+                    obj.name.replace("MinimapCam_", "").replace("floor", "")
+                )
+            except Exception:
+                continue
+
+            if number > floors:
+                bpy.data.objects.remove(obj, do_unlink=True)
+
+        # Create / update cameras
+        first_camera = None
+
+        for floor in range(floors):
+
+            cam_name = f"MinimapCam_{floor + 1}floor"
+
+            cam_obj = bpy.data.objects.get(cam_name)
+
+            if cam_obj is None:
+
+                cam_data = bpy.data.cameras.new(name=cam_name)
+                cam_data.type = 'ORTHO'
+
+                cam_obj = bpy.data.objects.new(cam_name, cam_data)
+                context.scene.collection.objects.link(cam_obj)
+
+            cam_obj.location = (
+                0.0,
+                0.0,
+                float(floor)
+            )
+
+            cam_obj.rotation_euler = (
+                0.0,
+                0.0,
+                0.0
+            )
+
             cam_obj.lock_rotation[0] = True
             cam_obj.lock_rotation[1] = True
             cam_obj.lock_rotation[2] = True
@@ -494,27 +530,13 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
             cam_obj.lock_location[0] = True
             cam_obj.lock_location[1] = True
             cam_obj.lock_location[2] = False
-            # link to scene collection if not linked
-            try:
-                if cam_obj.name not in context.scene.collection.objects:
-                    context.scene.collection.objects.link(cam_obj)
-            except Exception:
-                try:
-                    context.scene.collection.objects.link(cam_obj)
-                except Exception:
-                    pass
-        else:
-            # Ensure reused camera has the correct rotation
-            try:
-                cam_obj.rotation_euler = (0.0, 0.0, 0.0)
-            except Exception:
-                pass
 
-        # Set as the active scene camera
-        try:
-            context.scene.camera = cam_obj
-        except Exception:
-            pass
+            if floor == 0:
+                first_camera = cam_obj
+
+        # Set first camera as active
+        if first_camera is not None:
+            context.scene.camera = first_camera
 
         # Save original shading settings once per session (window_manager)
         wm = context.window_manager

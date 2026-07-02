@@ -11,7 +11,9 @@ class GTAMINIMAP_PT_panel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
 
-        layout.label(text="Minimap Tools")
+        layout.label(text="Numbers of floors:")
+        layout.prop(context.scene, "minimap_floors", text="")
+        layout.separator()
         layout.operator('gtaminimap.prepare_scene', icon='SCENE')
         layout.operator('gtaminimap.exit_minimap_mode', icon='LOOP_BACK')
 
@@ -38,7 +40,7 @@ class GTAMINIMAP_PT_panel(bpy.types.Panel):
         else:
             box.label(text="Open Add-on Preferences to configure colors")
 
-        # contains MLO name
+        # export settings
         layout.separator()
         layout.prop(context.scene, "mlo_name", text="MLO Name")
 
