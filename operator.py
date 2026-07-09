@@ -29,7 +29,7 @@ def joaat(text):
 
     return h
 
-def build_gfx(target_dir, mlo_name):
+def build_gfx(target_dir, mlo_name, floor_data):
     temp_swf = target_dir / "intEXAMPLE.swf"
     temp_xml = target_dir / "intEXAMPLE.xml"
 
@@ -81,44 +81,44 @@ def build_gfx(target_dir, mlo_name):
     xml = xml.replace("col_name", mlo_name)
     xml = xml.replace("EXAMPLE", str(hash_value))
 
-    ortho = bpy.context.scene.camera.data.ortho_scale
+    for character_id, ortho in floor_data:
+        # ---------- TranslateX&TranslateY ----------
 
-    # ---------- TranslateX&TranslateY ----------
+        move = int(round(-100.0 * ortho))
 
-    move = int(round(-(97.75 * ortho + 50.0)))
+        pattern = (
+            rf'(<item type="PlaceObject2Tag" characterId="{character_id}".*?'
+            r'<matrix[^>]*translateX=")-?\d+(\.\d+)?'
+            r'(" translateY=")-?\d+(\.\d+)?(")'
+        )
 
-    pattern = (
-        r'(<item type="PlaceObject2Tag" characterId="1".*?'
-        r'<matrix[^>]*translateX=")-?\d+(\.\d+)?'
-        r'(" translateY=")-?\d+(\.\d+)?(")'
-    )
+        xml = re.sub(
+            pattern,
+            rf'\g<1>{move}\g<3>{move}\g<5>',
+            xml,
+            flags=re.DOTALL
+        )
 
-    xml = re.sub(
-        pattern,
-        rf'\g<1>{move}\g<3>{move}\g<5>',
-        xml,
-        flags=re.DOTALL
-    )
+        # ---------- Scale ----------
 
-    # ---------- Scale ----------
+        BOUND_SCALE = 20480.0
+        scale = (ortho * 200.0) / BOUND_SCALE
 
-    scale = 0.00468018 * ortho + 0.002236
+        pattern = (
+            rf'(<item type="PlaceObject2Tag" characterId="{character_id}".*?'
+            r'scaleX=")-?\d+(\.\d+)?'
+            r'(" scaleY=")-?\d+(\.\d+)?(")'
+        )
 
-    pattern = (
-        r'(<item type="PlaceObject2Tag" characterId="1".*?'
-        r'scaleX=")-?\d+(\.\d+)?'
-        r'(" scaleY=")-?\d+(\.\d+)?(")'
-    )
+        xml = re.sub(
+            pattern,
+            rf'\g<1>{scale:.8f}\g<3>{scale:.8f}\g<5>',
+            xml,
+            flags=re.DOTALL
+        )
 
-    xml = re.sub(
-        pattern,
-        rf'\g<1>{scale:.8f}\g<3>{scale:.8f}\g<5>',
-        xml,
-        flags=re.DOTALL
-    )
-
-    print(f"[GFX] translate = {move}")
-    print(f"[GFX] scale = {scale:.8f}")
+        print(f"[GFX] translate = {move}")
+        print(f"[GFX] scale = {scale:.8f}")
 
     with open(temp_xml, "w", encoding="utf-8") as f:
         f.write(xml)
@@ -466,6 +466,27 @@ def hierarchy_is_sollumz(hierarchy_objects):
     return any(object_is_sollumz(o) for o in hierarchy_objects)
 
 
+class GTAMINIMAP_OT_floor_mapping_help(bpy.types.Operator):
+    bl_idname = "gtaminimap.floor_mapping_help"
+    bl_label = "FloorID mapping"
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        self.report({'INFO'}, "FloorID mapping")
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_popup(self, width=320)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text="FloorID -1 = Basement")
+        layout.label(text="FloorID 0 = First floor")
+        layout.label(text="FloorID 1 = Second floor")
+        layout.label(text="FloorID 2 = Third floor")
+        layout.label(text="FloorID 3 = Fourth floor")
+
+
 class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
     """Refresh Minimap Mode"""
     bl_idname = "gtaminimap.prepare_scene"
@@ -475,41 +496,55 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
     def execute(self, context):
 
         floors = int(context.scene.minimap_floors)
+        has_basement = bool(getattr(context.scene, 'has_basement', False))
 
-        # Remove unnecessary Minimap cameras
+        # Remove existing Minimap cameras
         for obj in list(bpy.data.objects):
-            if obj.type != 'CAMERA':
+            if obj.type != 'CAMERA' or not obj.name.startswith("MinimapCam"):
                 continue
 
-            if not obj.name.startswith("MinimapCam_"):
-                continue
-
-            try:
-                number = int(
-                    obj.name.replace("MinimapCam_", "").replace("floor", "")
-                )
-            except Exception:
-                continue
-
-            if number > floors:
-                bpy.data.objects.remove(obj, do_unlink=True)
+            bpy.data.objects.remove(obj, do_unlink=True)
 
         # Create / update cameras
         first_camera = None
 
-        for floor in range(floors):
+        if has_basement:
+            cam_name = "MinimapCam_basement"
 
+            cam_data = bpy.data.cameras.new(name=cam_name)
+            cam_data.type = 'ORTHO'
+
+            cam_obj = bpy.data.objects.new(cam_name, cam_data)
+            context.scene.collection.objects.link(cam_obj)
+
+            cam_obj.location = (
+                0.0,
+                0.0,
+                -1.0
+            )
+
+            cam_obj.rotation_euler = (
+                0.0,
+                0.0,
+                0.0
+            )
+
+            cam_obj.lock_rotation[0] = True
+            cam_obj.lock_rotation[1] = True
+            cam_obj.lock_rotation[2] = True
+
+            cam_obj.lock_location[0] = True
+            cam_obj.lock_location[1] = True
+            cam_obj.lock_location[2] = False
+
+        for floor in range(floors):
             cam_name = f"MinimapCam_{floor + 1}floor"
 
-            cam_obj = bpy.data.objects.get(cam_name)
+            cam_data = bpy.data.cameras.new(name=cam_name)
+            cam_data.type = 'ORTHO'
 
-            if cam_obj is None:
-
-                cam_data = bpy.data.cameras.new(name=cam_name)
-                cam_data.type = 'ORTHO'
-
-                cam_obj = bpy.data.objects.new(cam_name, cam_data)
-                context.scene.collection.objects.link(cam_obj)
+            cam_obj = bpy.data.objects.new(cam_name, cam_data)
+            context.scene.collection.objects.link(cam_obj)
 
             cam_obj.location = (
                 0.0,
@@ -1145,15 +1180,13 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                         ],
                         final_svg
                     )
-                    try:
-                        mlo_name = context.scene.mlo_name.strip()
-
-                        if mlo_name:
-                            build_gfx(target_dir, mlo_name)
-
-                    except Exception as e:
-                        print(f"[GFX] Error: {e}")
-
+                    if not getattr(context.scene, 'has_basement', False) and svg_index == 3:
+                        merge_svg_layers(
+                            [
+                                target_dir / "background.svg",
+                            ],
+                            target_dir / "1.svg"
+                        )
                     for layer in layer_names:
                         try:
                             svg_fp = target_dir / f"{layer}.svg"
@@ -1330,18 +1363,22 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
             if getattr(obj, 'type', None) != 'CAMERA':
                 continue
             name = getattr(obj, 'name', '')
+            if name == 'MinimapCam_basement':
+                floor_cameras.append((-1, obj, 1, 1))
+                continue
             if not name.startswith('MinimapCam_') or not name.endswith('floor'):
                 continue
             try:
-                floor_index = int(name[len('MinimapCam_'):-len('floor')])
+                floor_number = int(name[len('MinimapCam_'):-len('floor')])
             except Exception:
                 continue
-            floor_cameras.append((floor_index, obj))
+            floor_cameras.append((floor_number, obj, floor_number * 2 + 1, floor_number * 2 + 1))
 
         floor_cameras.sort(key=lambda item: item[0])
 
+        floor_data = []
         result = {'FINISHED'}
-        for floor_index, cam_obj in floor_cameras:
+        for _, cam_obj, svg_index, character_id in floor_cameras:
             try:
                 context.scene.camera = cam_obj
             except Exception:
@@ -1356,11 +1393,22 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                 area_for_render,
                 region,
                 space_for_render,
-                floor_index * 2 - 1,
+                svg_index,
             )
 
             if result != {'FINISHED'}:
                 return result
+
+            floor_data.append((character_id, cam_obj.data.ortho_scale))
+
+        try:
+            mlo_name = context.scene.mlo_name.strip()
+
+            if mlo_name and floor_data:
+                build_gfx(target_dir, mlo_name, floor_data)
+
+        except Exception as e:
+            print(f"[GFX] Error: {e}")
 
         return result
 
@@ -1534,6 +1582,7 @@ class GTAMINIMAP_OT_reset_colors(bpy.types.Operator):
         self.report({'INFO'}, "Minimap colors reset.")
         return {'FINISHED'}
 classes = (
+    GTAMINIMAP_OT_floor_mapping_help,
     GTAMINIMAP_OT_prepare_scene,
     GTAMINIMAP_OT_make_shot,
     GTAMINIMAP_OT_apply_color_selected,

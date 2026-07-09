@@ -12,7 +12,7 @@ bl_info = {
 
 import bpy
 
-from bpy.props import StringProperty, EnumProperty
+from bpy.props import StringProperty, EnumProperty, BoolProperty
 from . import operator, panel, preferences
 
 
@@ -35,6 +35,11 @@ def register():
         default='1'
     )
 
+    bpy.types.Scene.has_basement = BoolProperty(
+        name="Has basement",
+        default=False
+    )
+
     for mod in modules:
         if hasattr(mod, "classes"):
             for cls in mod.classes:
@@ -44,6 +49,7 @@ def register():
 def unregister():
 
     del bpy.types.Scene.minimap_floors
+    del bpy.types.Scene.has_basement
     del bpy.types.Scene.mlo_name
 
     for mod in reversed(modules):

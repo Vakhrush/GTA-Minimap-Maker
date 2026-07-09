@@ -11,8 +11,11 @@ class GTAMINIMAP_PT_panel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
 
-        layout.label(text="Numbers of floors:")
-        layout.prop(context.scene, "minimap_floors", text="")
+        row = layout.row(align=True)
+        row.label(text="Number of floors:")
+        row.prop(context.scene, "minimap_floors", text="")
+        row.operator("gtaminimap.floor_mapping_help", text="", icon='QUESTION')
+        layout.prop(context.scene, "has_basement", text="Has basement")
         layout.separator()
         layout.operator('gtaminimap.prepare_scene', icon='SCENE')
         layout.operator('gtaminimap.exit_minimap_mode', icon='LOOP_BACK')
