@@ -498,6 +498,11 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
         floors = int(context.scene.minimap_floors)
         has_basement = bool(getattr(context.scene, 'has_basement', False))
 
+        minimap_collection = bpy.data.collections.get("Minimap")
+        if minimap_collection is None:
+            minimap_collection = bpy.data.collections.new("Minimap")
+            context.scene.collection.children.link(minimap_collection)
+
         # Remove existing Minimap cameras
         for obj in list(bpy.data.objects):
             if obj.type != 'CAMERA' or not obj.name.startswith("MinimapCam"):
@@ -515,7 +520,7 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
             cam_data.type = 'ORTHO'
 
             cam_obj = bpy.data.objects.new(cam_name, cam_data)
-            context.scene.collection.objects.link(cam_obj)
+            minimap_collection.objects.link(cam_obj)
 
             cam_obj.location = (
                 0.0,
@@ -544,7 +549,7 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
             cam_data.type = 'ORTHO'
 
             cam_obj = bpy.data.objects.new(cam_name, cam_data)
-            context.scene.collection.objects.link(cam_obj)
+            minimap_collection.objects.link(cam_obj)
 
             cam_obj.location = (
                 0.0,
@@ -1331,13 +1336,9 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
         except Exception:
             pass
 
-        filename = f"minimap_{timestamp}.png"
-        out_path = target_dir / filename
-
         scene.render.image_settings.file_format = 'PNG'
         scene.render.resolution_x = shot_res
         scene.render.resolution_y = shot_res
-        scene.render.filepath = str(out_path)
 
         area_for_render = None
         region = None
@@ -1357,6 +1358,8 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                 break
             if area_for_render:
                 break
+
+        mlo_name = context.scene.mlo_name.strip()
 
         floor_cameras = []
         for obj in bpy.data.objects:
@@ -1384,6 +1387,23 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
             except Exception:
                 pass
 
+            cam_name = getattr(cam_obj, 'name', '')
+            if cam_name == 'MinimapCam_basement':
+                filename = f"minimap_basement_{mlo_name}.png" if mlo_name else f"minimap_{timestamp}.png"
+            elif cam_name == 'MinimapCam_1floor':
+                filename = f"minimap_1floor_{mlo_name}.png" if mlo_name else f"minimap_{timestamp}.png"
+            elif cam_name == 'MinimapCam_2floor':
+                filename = f"minimap_2floor_{mlo_name}.png" if mlo_name else f"minimap_{timestamp}.png"
+            elif cam_name == 'MinimapCam_3floor':
+                filename = f"minimap_3floor_{mlo_name}.png" if mlo_name else f"minimap_{timestamp}.png"
+            elif cam_name == 'MinimapCam_4floor':
+                filename = f"minimap_4floor_{mlo_name}.png" if mlo_name else f"minimap_{timestamp}.png"
+            else:
+                filename = f"minimap_{timestamp}.png"
+
+            out_path = target_dir / filename
+            scene.render.filepath = str(out_path)
+
             result = self.export_floor(
                 context,
                 scene,
@@ -1402,10 +1422,13 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
             floor_data.append((character_id, cam_obj.data.ortho_scale))
 
         try:
-            mlo_name = context.scene.mlo_name.strip()
-
             if mlo_name and floor_data:
                 build_gfx(target_dir, mlo_name, floor_data)
+
+            if not getattr(context.scene, 'has_basement', False):
+                temp_svg = target_dir / "1.svg"
+                if temp_svg.exists():
+                    temp_svg.unlink()
 
         except Exception as e:
             print(f"[GFX] Error: {e}")
