@@ -89,13 +89,22 @@ Recommended values:
 
 ### 1. Refresh Minimap Mode
 
+Select:
+
+- **Number of floors** (1–4)
+- **Has Basement** (optional)
+
 Click:
 
 **Refresh Minimap Mode**
 
 Switch the viewport to **Solid** shading.
 
-The addon automatically creates **MinimapCam**.
+The addon automatically:
+
+- creates a **Minimap** collection;
+- creates one camera for each floor;
+- optionally creates a basement camera.
 
 
 ![MinimapMode](docs/minimap_mode.gif)
@@ -104,7 +113,7 @@ The addon automatically creates **MinimapCam**.
 
 ### 2. Configure Camera
 
-Adjust only:
+For each generated camera, adjust only:
 
 **Object → Transform**
 
@@ -118,7 +127,8 @@ and
 
 Do not modify:
 
-- Camera RotationXYZ and LocationXY
+- Camera Rotation (XYZ)
+- Camera Location X/Y
 - Camera Shift
 
 ![ConfigCam](docs/config_cam.gif)
@@ -133,7 +143,7 @@ Examples:
 
 - Hide unnecessary props.
 - Paint objects using **Custom Paint**.
-- Create white helper meshes to represent entrances, exits or other map icons (only one custom color).
+- Create white helper meshes representing entrances, exits or other map icons (single custom color).
 - Prepare the scene exactly as you want it to appear on the minimap.
 
 ![Prepare](docs/prepare_scene.gif)
@@ -142,7 +152,7 @@ Examples:
 
 ### 4. Enter MLO Name
 
-Type the MLO name in the addon panel.
+Enter the MLO name in the addon panel.
 
 The addon automatically calculates the JOAAT hash and names the exported GFX accordingly.
 
@@ -156,16 +166,16 @@ Click:
 
 **Make Shot**
 
-The addon automatically:
+For each floor, the addon automatically:
 
 - renders the scene;
 - generates vector layers;
 - merges SVG layers;
-- builds the final SVG;
-- creates a GFX template;
+- creates the floor SVG;
+- builds the final GFX;
 - patches the MLO name;
 - patches the JOAAT hash;
-- imports the SVG into the GFX;
+- imports all generated SVGs into the GFX;
 - exports the finished minimap.
 
 ![Shot](docs/make_shot.gif)
@@ -177,28 +187,30 @@ The addon automatically:
 The output directory contains:
 
 - `int<hash>.gfx`
-- `1.svg`
-- minimap preview PNG
+- floor SVG files (`3.svg`, `5.svg`, `7.svg`, `9.svg`)
+- optional `1.svg` (basement)
+- PNG preview for each exported floor
 
 Temporary files are automatically removed.
 
+
 ![Result](docs/result.png)
+![Result](docs/result2.png)
 
 ---
 
 ## Current Limitations
 
-- Designed for single-floor interiors.
+- Supports up to **4 floors** plus **1 optional basement**.
 - Camera Shift is not supported.
-- Camera Rotation/LocationXY must remain unchanged.
+- Camera Rotation and Location X/Y must remain unchanged.
 
 ---
 
 ## Roadmap
 
-- Multi-floor minimap support
-- Adding a GIF demo to the README file
-- Additional options
+- Additional customization options
+- Additional export options
 
 ---
 
