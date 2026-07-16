@@ -1175,23 +1175,27 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
                     final_svg = target_dir / f"{svg_index}.svg"
 
-                    merge_svg_layers(
-                        [
-                            target_dir / "background.svg",
-                            target_dir / "shell.svg",
-                            target_dir / "entity.svg",
-                            target_dir / "walls.svg",
-                            target_dir / "custom.svg",
-                        ],
-                        final_svg
-                    )
+                    svg_layers = []
+                    if bool(getattr(prefs, 'show_background', True)):
+                        svg_layers.append(target_dir / "background.svg")
+                    svg_layers.extend([
+                        target_dir / "shell.svg",
+                        target_dir / "entity.svg",
+                        target_dir / "walls.svg",
+                        target_dir / "custom.svg",
+                    ])
+
+                    merge_svg_layers(svg_layers, final_svg)
                     if not getattr(context.scene, 'has_basement', False) and svg_index == 3:
-                        merge_svg_layers(
-                            [
-                                target_dir / "background.svg",
-                            ],
-                            target_dir / "1.svg"
-                        )
+                        if bool(getattr(prefs, 'show_background', True)):
+                            merge_svg_layers(
+                                [
+                                    target_dir / "background.svg",
+                                ],
+                                target_dir / "1.svg"
+                            )
+                        else:
+                            merge_svg_layers([], target_dir / "1.svg")
                     for layer in layer_names:
                         try:
                             svg_fp = target_dir / f"{layer}.svg"

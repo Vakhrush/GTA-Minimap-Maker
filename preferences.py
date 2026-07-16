@@ -58,6 +58,12 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         default=(0.051269, 0.051269, 0.051269, 1.0)
     )
 
+    show_background: bpy.props.BoolProperty(
+        name="Background",
+        description="Include the background layer in the final merged SVG",
+        default=True
+    )
+
     custom_paint_color: bpy.props.FloatVectorProperty(
         name="Custom Paint Color",
         description="Color applied to selected meshes",
@@ -80,7 +86,9 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         box.label(text="Minimap Colors")
         box.prop(self, 'entity_color')
         box.prop(self, 'shell_color')
-        box.prop(self, 'background_color')
+        box.prop(self, 'background_color', text="Walls")
+
+        layout.prop(self, 'show_background')
 
         layout.separator()
         cbox = layout.box()

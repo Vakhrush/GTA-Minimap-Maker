@@ -32,7 +32,7 @@ class GTAMINIMAP_PT_panel(bpy.types.Panel):
             row = box.row()
             row.prop(p, 'shell_color', text='Shell')
             row = box.row()
-            row.prop(p, 'background_color', text='Background')
+            row.prop(p, 'background_color', text='Walls')
             layout.operator("gtaminimap.reset_colors", text="Reset Minimap Colors", icon='FILE_REFRESH')
 
             # separate custom paint into its own section (single label)
