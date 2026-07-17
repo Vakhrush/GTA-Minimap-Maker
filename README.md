@@ -124,6 +124,7 @@ and
 **Camera Data**
 
 - Orthographic Scale
+- For multi-floor MLOs, configure the camera's **Clip Start and Clip End** values to exclude lower floors from the export.
 
 Do not modify:
 
@@ -138,8 +139,6 @@ Do not modify:
 ### 3. Prepare the Scene
 
 Configure the minimap appearance.
-
-For multi-floor MLOs, configure the camera's Clip Start and Clip End values to exclude lower floors from the export.
 
 Examples:
 
