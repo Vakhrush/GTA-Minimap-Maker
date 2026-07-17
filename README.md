@@ -139,6 +139,8 @@ Do not modify:
 
 Configure the minimap appearance.
 
+For multi-floor MLOs, configure the camera's Clip Start and Clip End values to exclude lower floors from the export.
+
 Examples:
 
 - Hide unnecessary props.
