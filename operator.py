@@ -735,6 +735,16 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
                             except Exception:
                                 continue
 
+        if not context.scene.mlo_name.strip():
+            try:
+                archetype = context.scene.ytyps[0].selected_archetype
+
+                if archetype and archetype.type == "sollumz_archetype_mlo":
+                    context.scene.mlo_name = archetype.name
+
+            except Exception:
+                pass
+
         if prefs is not None:
             shot_res = prefs.shot_resolution
         else:
