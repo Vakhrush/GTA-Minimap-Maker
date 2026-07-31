@@ -81,10 +81,11 @@ def build_gfx(target_dir, mlo_name, floor_data):
     xml = xml.replace("col_name", mlo_name)
     xml = xml.replace("EXAMPLE", str(hash_value))
 
-    for character_id, ortho in floor_data:
+    for character_id, ortho, camera in floor_data:
         # ---------- TranslateX&TranslateY ----------
 
-        move = int(round(-100.0 * ortho))
+        move_x = int(round(-100.0 * ortho + 100.0 * (camera.location.x * 2)))
+        move_y = int(round(-100.0 * ortho - 100.0 * (camera.location.y * 2)))
 
         pattern = (
             rf'(<item type="PlaceObject2Tag" characterId="{character_id}".*?'
@@ -94,7 +95,7 @@ def build_gfx(target_dir, mlo_name, floor_data):
 
         xml = re.sub(
             pattern,
-            rf'\g<1>{move}\g<3>{move}\g<5>',
+            rf'\g<1>{move_x}\g<3>{move_y}\g<5>',
             xml,
             flags=re.DOTALL
         )
@@ -117,7 +118,7 @@ def build_gfx(target_dir, mlo_name, floor_data):
             flags=re.DOTALL
         )
 
-        print(f"[GFX] translate = {move}")
+        print(f"[GFX] translate = ({move_x}, {move_y})")
         print(f"[GFX] scale = {scale:.8f}")
 
     with open(temp_xml, "w", encoding="utf-8") as f:
@@ -538,10 +539,6 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
             cam_obj.lock_rotation[1] = True
             cam_obj.lock_rotation[2] = True
 
-            cam_obj.lock_location[0] = True
-            cam_obj.lock_location[1] = True
-            cam_obj.lock_location[2] = False
-
         for floor in range(floors):
             cam_name = f"MinimapCam_{floor + 1}floor"
 
@@ -566,10 +563,6 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
             cam_obj.lock_rotation[0] = True
             cam_obj.lock_rotation[1] = True
             cam_obj.lock_rotation[2] = True
-
-            cam_obj.lock_location[0] = True
-            cam_obj.lock_location[1] = True
-            cam_obj.lock_location[2] = False
 
             if floor == 0:
                 first_camera = cam_obj
@@ -797,24 +790,19 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
             return {'CANCELLED'}
 
-        # Check Camera Transform
-        loc = cam_obj.location
+        # Check Camera Rotation
         rot = cam_obj.rotation_euler
 
         if (
-            abs(loc.x) > eps or
-            abs(loc.y) > eps or
             abs(rot.x) > eps or
             abs(rot.y) > eps or
             abs(rot.z) > eps
         ):
-            cam_obj.location.x = 0.0
-            cam_obj.location.y = 0.0
             cam_obj.rotation_euler = (0.0, 0.0, 0.0)
 
             self.report(
                 {'WARNING'},
-                "Camera transform is invalid. Location X/Y and Rotation have been reset."
+                "Camera Rotation is not supported. Rotation has been reset."
             )
 
             return {'CANCELLED'}
@@ -1433,7 +1421,7 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
             if result != {'FINISHED'}:
                 return result
 
-            floor_data.append((character_id, cam_obj.data.ortho_scale))
+            floor_data.append((character_id, cam_obj.data.ortho_scale, cam_obj))
 
         try:
             if mlo_name and floor_data:
