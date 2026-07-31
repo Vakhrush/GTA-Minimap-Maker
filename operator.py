@@ -80,12 +80,16 @@ def build_gfx(target_dir, mlo_name, floor_data):
 
     xml = xml.replace("col_name", mlo_name)
     xml = xml.replace("EXAMPLE", str(hash_value))
+    mlo_col = bpy.data.objects.get(mlo_name) if mlo_name else None
 
     for character_id, ortho, camera in floor_data:
         # ---------- TranslateX&TranslateY ----------
 
-        move_x = int(round(-100.0 * ortho + 100.0 * (camera.location.x * 2)))
-        move_y = int(round(-100.0 * ortho - 100.0 * (camera.location.y * 2)))
+        mlo_col_x = mlo_col.location.x if mlo_col is not None else 0.0
+        mlo_col_y = mlo_col.location.y if mlo_col is not None else 0.0
+
+        move_x = int(round(-100.0 * ortho + 100.0 * (camera.location.x * 2 - mlo_col_x * 2)))
+        move_y = int(round(-100.0 * ortho - 100.0 * (camera.location.y * 2 - mlo_col_y * 2)))
 
         pattern = (
             rf'(<item type="PlaceObject2Tag" characterId="{character_id}".*?'
@@ -504,65 +508,60 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
             minimap_collection = bpy.data.collections.new("Minimap")
             context.scene.collection.children.link(minimap_collection)
 
-        # Remove existing Minimap cameras
-        for obj in list(bpy.data.objects):
-            if obj.type != 'CAMERA' or not obj.name.startswith("MinimapCam"):
-                continue
-
-            bpy.data.objects.remove(obj, do_unlink=True)
-
-        # Create / update cameras
+        # Create missing cameras without touching existing ones
         first_camera = None
 
         if has_basement:
             cam_name = "MinimapCam_basement"
+            cam_obj = bpy.data.objects.get(cam_name)
+            if cam_obj is None:
+                cam_data = bpy.data.cameras.new(name=cam_name)
+                cam_data.type = 'ORTHO'
 
-            cam_data = bpy.data.cameras.new(name=cam_name)
-            cam_data.type = 'ORTHO'
+                cam_obj = bpy.data.objects.new(cam_name, cam_data)
+                minimap_collection.objects.link(cam_obj)
 
-            cam_obj = bpy.data.objects.new(cam_name, cam_data)
-            minimap_collection.objects.link(cam_obj)
+                cam_obj.location = (
+                    0.0,
+                    0.0,
+                    -1.0
+                )
 
-            cam_obj.location = (
-                0.0,
-                0.0,
-                -1.0
-            )
+                cam_obj.rotation_euler = (
+                    0.0,
+                    0.0,
+                    0.0
+                )
 
-            cam_obj.rotation_euler = (
-                0.0,
-                0.0,
-                0.0
-            )
-
-            cam_obj.lock_rotation[0] = True
-            cam_obj.lock_rotation[1] = True
-            cam_obj.lock_rotation[2] = True
+                cam_obj.lock_rotation[0] = True
+                cam_obj.lock_rotation[1] = True
+                cam_obj.lock_rotation[2] = True
 
         for floor in range(floors):
             cam_name = f"MinimapCam_{floor + 1}floor"
+            cam_obj = bpy.data.objects.get(cam_name)
+            if cam_obj is None:
+                cam_data = bpy.data.cameras.new(name=cam_name)
+                cam_data.type = 'ORTHO'
 
-            cam_data = bpy.data.cameras.new(name=cam_name)
-            cam_data.type = 'ORTHO'
+                cam_obj = bpy.data.objects.new(cam_name, cam_data)
+                minimap_collection.objects.link(cam_obj)
 
-            cam_obj = bpy.data.objects.new(cam_name, cam_data)
-            minimap_collection.objects.link(cam_obj)
+                cam_obj.location = (
+                    0.0,
+                    0.0,
+                    float(floor)
+                )
 
-            cam_obj.location = (
-                0.0,
-                0.0,
-                float(floor)
-            )
+                cam_obj.rotation_euler = (
+                    0.0,
+                    0.0,
+                    0.0
+                )
 
-            cam_obj.rotation_euler = (
-                0.0,
-                0.0,
-                0.0
-            )
-
-            cam_obj.lock_rotation[0] = True
-            cam_obj.lock_rotation[1] = True
-            cam_obj.lock_rotation[2] = True
+                cam_obj.lock_rotation[0] = True
+                cam_obj.lock_rotation[1] = True
+                cam_obj.lock_rotation[2] = True
 
             if floor == 0:
                 first_camera = cam_obj
