@@ -1,7 +1,7 @@
 bl_info = {
     "name": "GTA Minimap Maker",
     "author": "Bigbigdog",
-    "version": (1, 1),
+    "version": (1, 2),
     "blender": (5, 1, 0),
     "location": "View3D > Sidebar > GTA Tools",
     "description": "Create GTA minimap from Sollumz scenes",
