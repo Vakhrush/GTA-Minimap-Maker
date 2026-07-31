@@ -46,6 +46,9 @@ class GTAMINIMAP_PT_panel(bpy.types.Panel):
         # export settings
         layout.separator()
         layout.prop(context.scene, "mlo_name", text="MLO Name")
+        prefs = context.preferences.addons.get(__package__)
+        if prefs:
+            layout.prop(prefs.preferences, "shot_quality")
 
         # final step
         layout.separator()

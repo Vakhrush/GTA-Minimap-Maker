@@ -1,6 +1,7 @@
 import bpy
 import math
 import subprocess
+from datetime import datetime
 from pathlib import Path
 import shutil
 import re
@@ -81,7 +82,12 @@ def build_gfx(target_dir, mlo_name, floor_data):
     xml = xml.replace("col_name", mlo_name)
     xml = xml.replace("EXAMPLE", str(hash_value))
     mlo_col = bpy.data.objects.get(mlo_name) if mlo_name else None
+    author = getattr(prefs, 'author', '').strip()
+    if author:
+        xml = xml.replace("Bigbigdog", author)
 
+    modify_date = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    xml = xml.replace("2014-10-29T17:03:43Z", modify_date)
     for character_id, ortho, camera in floor_data:
         # ---------- TranslateX&TranslateY ----------
 

@@ -1,6 +1,16 @@
 import bpy
 
 
+def update_shot_quality(self, context):
+    quality_map = {
+        'LOW': 1024,
+        'MEDIUM': 2048,
+        'HIGH': 4096,
+        'ULTRA': 8192,
+    }
+    self.shot_resolution = quality_map.get(self.shot_quality, 2048)
+
+
 class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
     bl_idname = __package__
 
@@ -23,6 +33,25 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         description="Resolution for the minimap shot (pixels)",
         default=2048,
         min=1024,
+    )
+
+    shot_quality: bpy.props.EnumProperty(
+        name="Shot Quality",
+        description="Quick selector for shot resolution",
+        items=(
+            ('LOW', "Low", "", 0),
+            ('MEDIUM', "Medium", "", 1),
+            ('HIGH', "High", "", 2),
+            ('ULTRA', "Ultra", "", 3),
+        ),
+        default='MEDIUM',
+        update=update_shot_quality,
+    )
+
+    author: bpy.props.StringProperty(
+        name="Author",
+        description="Author name written into exported XML",
+        default=""
     )
 
     entity_color: bpy.props.FloatVectorProperty(
@@ -81,6 +110,7 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         layout.prop(self, "output_path")
         layout.prop(self, "jpexs_path")
         layout.prop(self, "shot_resolution")
+        layout.prop(self, "author")
         layout.separator()
         box = layout.box()
         box.label(text="Minimap Colors")
