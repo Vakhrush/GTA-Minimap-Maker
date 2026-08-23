@@ -451,6 +451,52 @@ viewBox="{viewbox}">
         print(f"[SVG] Merge error: {e}")
 
 
+def add_shell_walls(shell_svg, walls_svg, thickness, color):
+    """Add shell contour strokes to the existing walls SVG."""
+    try:
+        if not shell_svg.exists() or not walls_svg.exists() or thickness <= 0.0:
+            return
+
+        with open(shell_svg, "r", encoding="utf-8") as f:
+            shell_content = f.read()
+        with open(walls_svg, "r", encoding="utf-8") as f:
+            walls_content = f.read()
+
+        shell_groups = re.findall(r"<g\b.*?</g>", shell_content, re.DOTALL)
+        if not shell_groups:
+            return
+
+        stroke_width = 2.0 * 100.0 * thickness
+        def convert_paths(match):
+            path = match.group(0) if hasattr(match, "group") else match
+            path = re.sub(r"\s+(?:fill|stroke|stroke-width|style)=\"[^\"]*\"", "", path)
+            path = re.sub(r"\s*/?>$", "", path)
+            return (
+                f'{path} fill="none" stroke="{svg_color_to_hex(color)}" '
+                f'stroke-width="{stroke_width:g}" stroke-linejoin="miter" '
+                f'stroke-linecap="round"/>'
+            )
+
+        shell_paths = []
+        for group in shell_groups:
+            shell_paths.extend(re.findall(r"<path\b[^>]*?d=\"[^\"]+\"[^>]*/?>", group, re.DOTALL))
+        if not shell_paths:
+            return
+
+        addition = ''.join(convert_paths(path) for path in shell_paths)
+        walls_group = re.search(r"<g\b[^>]*>.*?</g>", walls_content, re.DOTALL)
+        if not walls_group:
+            return
+        group_content = walls_group.group(0)
+        group_content = group_content.rsplit("</g>", 1)[0] + addition + "</g>"
+        walls_content = walls_content[:walls_group.start()] + group_content + walls_content[walls_group.end():]
+        with open(walls_svg, "w", encoding="utf-8") as f:
+            f.write(walls_content)
+        print(f"[SVG] Added shell-based walls: {walls_svg}")
+    except Exception as e:
+        print(f"[SVG] Shell wall error: {e}")
+
+
 def object_is_sollumz(obj):
     """Heuristic: detect Sollumz-created objects.
 
@@ -1175,6 +1221,14 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                                     recolor_svg(svg_fp, bg_color)
                                 elif layer == "custom":
                                     recolor_svg(svg_fp, (1.0, 1.0, 1.0, 1.0))
+
+                    if bool(getattr(prefs, 'auto_walls_from_shell', False)):
+                        add_shell_walls(
+                            target_dir / "shell.svg",
+                            target_dir / "walls.svg",
+                            float(getattr(prefs, 'wall_thickness', 0.001)),
+                            bg_color
+                        )
 
                     final_svg = target_dir / f"{svg_index}.svg"
 

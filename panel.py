@@ -49,6 +49,10 @@ class GTAMINIMAP_PT_panel(bpy.types.Panel):
         prefs = context.preferences.addons.get(__package__)
         if prefs:
             layout.prop(prefs.preferences, "shot_quality")
+            layout.prop(prefs.preferences, "auto_walls_from_shell")
+            row = layout.row()
+            row.enabled = prefs.preferences.auto_walls_from_shell
+            row.prop(prefs.preferences, "wall_thickness")
 
         # final step
         layout.separator()

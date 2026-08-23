@@ -93,6 +93,19 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         default=True
     )
 
+    auto_walls_from_shell: bpy.props.BoolProperty(
+        name="Automatically create walls from shell",
+        description="Add an offset of the shell contour to the walls layer",
+        default=False
+    )
+
+    wall_thickness: bpy.props.FloatProperty(
+        name="Wall Thickness",
+        description="Outward shell offset in Blender units",
+        default=0.001,
+        min=0.0
+    )
+
     custom_paint_color: bpy.props.FloatVectorProperty(
         name="Custom Paint Color",
         description="Color applied to selected meshes",
