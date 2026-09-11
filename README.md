@@ -76,10 +76,7 @@ C:\Program Files (x86)\FFDec\
 
 Higher values produce more detailed minimaps but increase export time.
 
-Recommended values:
-
-- 1024
-- 2048
+Recommended values: 2048 and better
 
 ![Preferences](docs/preferences.gif)
 
@@ -113,14 +110,6 @@ The addon automatically:
 
 ### 2. Configure Camera
 
-For each generated camera, adjust only:
-
-**Object → Transform**
-
-- Location Z
-
-and
-
 **Camera Data**
 
 - Orthographic Scale
@@ -129,7 +118,6 @@ and
 Do not modify:
 
 - Camera Rotation (XYZ)
-- Camera Location X/Y
 - Camera Shift
 
 ![ConfigCam](docs/config_cam.gif)
