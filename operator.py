@@ -5,6 +5,87 @@ from datetime import datetime
 from pathlib import Path
 import shutil
 import re
+import tempfile
+from .floor_geometry import detect_floor_bounds, set_camera_world_height
+
+
+def debug_enabled():
+    addon = bpy.context.preferences.addons.get(__package__)
+    return bool(addon and getattr(addon.preferences, 'debug_info', False))
+
+
+def debug_print(*args, **kwargs):
+    if debug_enabled():
+        print(*args, **kwargs)
+
+
+def run_external(*args, **kwargs):
+    if not debug_enabled():
+        kwargs.update(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return subprocess.run(*args, **kwargs)
+
+
+def detect_floor_ids(scene):
+    """Read every Room in the target Sollumz 2.9 MLO, independent of selection."""
+    ytyps = getattr(scene, 'ytyps', ())
+    mlos = [a for ytyp in ytyps for a in ytyp.archetypes
+            if a.type == 'sollumz_archetype_mlo']
+    name = scene.mlo_name.strip()
+    archetype = None
+    if name:
+        matches = [a for a in mlos if a.name == name]
+        if len(matches) == 1:
+            archetype = matches[0]
+        elif len(matches) > 1:
+            return [0], "Multiple MLO archetypes match MLO Name. Please use a unique MLO name and refresh again."
+        else:
+            return [0], "MLO Name was not found. Please enter the MLO archetype name and refresh again."
+    else:
+        index = getattr(scene, 'ytyp_index', -1)
+        if 0 <= index < len(ytyps):
+            selected = ytyps[index].selected_archetype
+            if selected is not None and selected.type == 'sollumz_archetype_mlo':
+                archetype = selected
+        if archetype is None:
+            if len(mlos) == 1:
+                archetype = mlos[0]
+            elif len(mlos) > 1:
+                return [0], "Multiple MLO archetypes found. Please enter MLO Name manually and refresh again."
+            else:
+                return [0], "MLO could not be detected automatically. Please enter MLO Name manually and refresh again."
+        scene.mlo_name = archetype.name
+
+    rooms = list(archetype.rooms)
+    debug_print(f"[Minimap] MLO: {archetype.name}")
+    debug_print(f"[Minimap] Rooms / FloorIDs: {[(r.name, r.floor_id) for r in rooms]}")
+    if not rooms:
+        return [0], "The MLO has no Rooms. Using one default floor; assign Room FloorIDs and refresh again."
+    floor_ids = sorted({room.floor_id for room in rooms})
+    debug_print(f"[Minimap] Detected FloorIDs: {floor_ids}")
+    if any(floor_id < -1 or floor_id > 3 for floor_id in floor_ids):
+        return [0], "Room FloorIDs outside -1..3 are not supported by the current GFX template. Using one default floor."
+    return floor_ids, None
+
+
+def floor_camera_name(floor_id):
+    return 'MinimapCam_basement' if floor_id == -1 else f'MinimapCam_{floor_id + 1}floor'
+
+
+def active_floor_cameras(scene):
+    floor_ids = list(scene.get('_gtaminimap_floor_ids', [0]))
+    cameras = []
+    for floor_id in floor_ids:
+        obj = scene.objects.get(floor_camera_name(floor_id))
+        if obj is not None and obj.type == 'CAMERA':
+            svg_index = 2 * floor_id + 3
+            cameras.append((floor_id, obj, svg_index, svg_index))
+    used = {camera.name for _, camera, _, _ in cameras}
+    unused = sorted(obj.name for obj in scene.objects
+                    if obj.type == 'CAMERA' and obj.name.startswith('MinimapCam_') and obj.name not in used)
+    debug_print(f"[Minimap] Active FloorIDs: {floor_ids}")
+    debug_print(f"[Minimap] Used cameras: {[camera.name for _, camera, _, _ in cameras]}")
+    debug_print(f"[Minimap] Unused cameras: {unused}")
+    return cameras
 
 def joaat(text):
     text = text.lower()
@@ -38,9 +119,9 @@ def build_gfx(target_dir, mlo_name, floor_data):
         try:
             if f.exists():
                 f.unlink()
-                print(f"[GFX] Removed old temp: {f}")
+                debug_print(f"[GFX] Removed old temp: {f}")
         except Exception as e:
-            print(f"[GFX] Cannot remove {f}: {e}")
+            debug_print(f"[GFX] Cannot remove {f}: {e}")
 
     hash_value = joaat(mlo_name)
 
@@ -66,7 +147,7 @@ def build_gfx(target_dir, mlo_name, floor_data):
             f"FFDec not found: {ffdec}"
         )
 
-    subprocess.run(
+    run_external(
         [
             str(ffdec),
             "-swf2xml",
@@ -128,13 +209,13 @@ def build_gfx(target_dir, mlo_name, floor_data):
             flags=re.DOTALL
         )
 
-        print(f"[GFX] translate = ({move_x}, {move_y})")
-        print(f"[GFX] scale = {scale:.8f}")
+        debug_print(f"[GFX] translate = ({move_x}, {move_y})")
+        debug_print(f"[GFX] scale = {scale:.8f}")
 
     with open(temp_xml, "w", encoding="utf-8") as f:
         f.write(xml)
 
-    subprocess.run(
+    run_external(
         [
             str(ffdec),
             "-xml2swf",
@@ -147,18 +228,16 @@ def build_gfx(target_dir, mlo_name, floor_data):
     svg_file = target_dir / "1.svg"
 
     if svg_file.exists():
-        subprocess.run(
-            [
-                str(ffdec),
-                "-importShapes",
-                str(temp_swf),
-                str(temp_swf),
-                str(target_dir),
-            ],
-            check=True
-        )
+        # Import only this refresh's floors, not SVGs left by older exports.
+        with tempfile.TemporaryDirectory(prefix="minimap_shapes_", dir=target_dir) as shapes_dir:
+            for shape_id in {1, *(item[0] for item in floor_data)}:
+                shutil.copy2(target_dir / f"{shape_id}.svg", Path(shapes_dir) / f"{shape_id}.svg")
+            run_external(
+                [str(ffdec), "-importShapes", str(temp_swf), str(temp_swf), shapes_dir],
+                check=True
+            )
 
-        print("[GFX] Shape imported")
+        debug_print("[GFX] Shape imported")
     else:
         raise Exception(f"SVG not found: {svg_file}")
 
@@ -170,7 +249,7 @@ def build_gfx(target_dir, mlo_name, floor_data):
     if temp_xml.exists():
         temp_xml.unlink()
 
-    print(f"[GFX] Created: {final_gfx}")
+    debug_print(f"[GFX] Created: {final_gfx}")
 
 def _clamp_color_tuple(col, length=4):
     """Ensure color tuple components are within 0.0-1.0 and return requested length."""
@@ -216,7 +295,7 @@ def _save_potrace_ready(png_path, out_path, bg_color):
     - is_background: if True, pixels that are visible become black (background layer)
     """
     try:
-        print(f"[Potrace] _save_potrace_ready start: png_path={png_path}, out_path={out_path}")
+        debug_print(f"[Potrace] _save_potrace_ready start: png_path={png_path}, out_path={out_path}")
         img = None
         fp = str(png_path)
         # remove existing loaded image if any
@@ -230,11 +309,11 @@ def _save_potrace_ready(png_path, out_path, bg_color):
 
         if img is None:
             try:
-                print(f"[Potrace] loading image: {fp}")
+                debug_print(f"[Potrace] loading image: {fp}")
                 img = bpy.data.images.load(fp)
-                print(f"[Potrace] image loaded: {fp}")
+                debug_print(f"[Potrace] image loaded: {fp}")
             except Exception as e:
-                print(f"[Potrace] image load error: {e}")
+                debug_print(f"[Potrace] image load error: {e}")
                 return False
 
         width = img.size[0]
@@ -295,11 +374,11 @@ def _save_potrace_ready(png_path, out_path, bg_color):
         try:
             if img is not None:
                 bpy.data.images.remove(img)
-                print(f"[Potrace] removed loaded image: {fp}")
+                debug_print(f"[Potrace] removed loaded image: {fp}")
         except Exception as e:
-            print(f"Potrace export error: {e}")
+            debug_print(f"Potrace export error: {e}")
 
-        print(f"[Potrace] _save_potrace_ready end: out_path={out_path}")
+        debug_print(f"[Potrace] _save_potrace_ready end: out_path={out_path}")
 
         return True
     except Exception:
@@ -308,18 +387,18 @@ def _save_potrace_ready(png_path, out_path, bg_color):
 
 def export_potrace_ready_files(target_dir, layer_names, bg_color):
     """Export Potrace-ready PBM files for Potrace."""
-    print(f"[Potrace] export_potrace_ready_files called with target_dir={target_dir}")
+    debug_print(f"[Potrace] export_potrace_ready_files called with target_dir={target_dir}")
 
     results = {}
 
     for name in layer_names:
         try:
-            print(f"[Potrace] start export for layer: {name}")
+            debug_print(f"[Potrace] start export for layer: {name}")
 
             png_fp = target_dir / f"{name}.png"
             out_fp = target_dir / f"{name}.pbm"
 
-            print(f"[Potrace] Potrace output path: {out_fp}")
+            debug_print(f"[Potrace] Potrace output path: {out_fp}")
 
             is_bg = (name.lower() == "background")
 
@@ -331,10 +410,10 @@ def export_potrace_ready_files(target_dir, layer_names, bg_color):
 
             results[name] = ok
 
-            print(f"[Potrace] export result for {name}: {ok}")
+            debug_print(f"[Potrace] export result for {name}: {ok}")
 
         except Exception as e:
-            print(f"Potrace export error: {e}")
+            debug_print(f"Potrace export error: {e}")
             results[name] = False
 
     return results
@@ -344,7 +423,7 @@ def run_potrace(pbm_path, svg_path):
     try:
         potrace_path = Path(__file__).parent / "potrace.exe"
 
-        subprocess.run(
+        run_external(
             [
                 str(potrace_path),
                 str(pbm_path),
@@ -358,11 +437,11 @@ def run_potrace(pbm_path, svg_path):
             check=True
         )
 
-        print(f"[Potrace] SVG created: {svg_path}")
+        debug_print(f"[Potrace] SVG created: {svg_path}")
         return True
 
     except Exception as e:
-        print(f"[Potrace] Error: {e}")
+        debug_print(f"[Potrace] Error: {e}")
         return False
 
 
@@ -399,10 +478,10 @@ def recolor_svg(svg_path, color):
         with open(svg_path, "w", encoding="utf-8") as f:
             f.write(content)
 
-        print(f"[SVG] Recolored: {svg_path} -> {hex_color}")
+        debug_print(f"[SVG] Recolored: {svg_path} -> {hex_color}")
 
     except Exception as e:
-        print(f"[SVG] Recolor error: {e}")
+        debug_print(f"[SVG] Recolor error: {e}")
 
 
 def merge_svg_layers(svg_files, output_svg):
@@ -445,10 +524,10 @@ viewBox="{viewbox}">
 
             f.write("</svg>\n")
 
-        print(f"[SVG] Merged: {output_svg}")
+        debug_print(f"[SVG] Merged: {output_svg}")
 
     except Exception as e:
-        print(f"[SVG] Merge error: {e}")
+        debug_print(f"[SVG] Merge error: {e}")
 
 
 def add_shell_walls(shell_svg, walls_svg, thickness, color):
@@ -484,6 +563,20 @@ def add_shell_walls(shell_svg, walls_svg, thickness, color):
             return
 
         addition = ''.join(convert_paths(path) for path in shell_paths)
+        mask_paths = []
+        for path in shell_paths:
+            clean_path = re.sub(r"\s+(?:fill|stroke|stroke-width|style)=\"[^\"]*\"", "", path)
+            clean_path = re.sub(r"\s*/?>$", "", clean_path)
+            mask_paths.append(
+                f'{clean_path} fill="none" stroke="white" stroke-width="{stroke_width:g}" '
+                'stroke-linejoin="miter" stroke-linecap="round"/>'
+            )
+            mask_paths.append(f'{clean_path} fill="black" stroke="none"/>')
+        mask_paths = ''.join(mask_paths)
+        mask = '<mask id="shell-based-walls-mask" maskUnits="userSpaceOnUse" ' \
+            'x="0" y="0" width="2048" height="2048">' + mask_paths + '</mask>'
+        addition = addition.replace(' fill="none"', ' fill="none" mask="url(#shell-based-walls-mask)"')
+        addition = '<defs>' + mask + '</defs>' + addition
         walls_group = re.search(r"<g\b[^>]*>.*?</g>", walls_content, re.DOTALL)
         if not walls_group:
             return
@@ -492,9 +585,9 @@ def add_shell_walls(shell_svg, walls_svg, thickness, color):
         walls_content = walls_content[:walls_group.start()] + group_content + walls_content[walls_group.end():]
         with open(walls_svg, "w", encoding="utf-8") as f:
             f.write(walls_content)
-        print(f"[SVG] Added shell-based walls: {walls_svg}")
+        debug_print(f"[SVG] Added shell-based walls: {walls_svg}")
     except Exception as e:
-        print(f"[SVG] Shell wall error: {e}")
+        debug_print(f"[SVG] Shell wall error: {e}")
 
 
 def object_is_sollumz(obj):
@@ -523,27 +616,6 @@ def hierarchy_is_sollumz(hierarchy_objects):
     return any(object_is_sollumz(o) for o in hierarchy_objects)
 
 
-class GTAMINIMAP_OT_floor_mapping_help(bpy.types.Operator):
-    bl_idname = "gtaminimap.floor_mapping_help"
-    bl_label = "FloorID mapping"
-    bl_options = {'REGISTER'}
-
-    def execute(self, context):
-        self.report({'INFO'}, "FloorID mapping")
-        return {'FINISHED'}
-
-    def invoke(self, context, event):
-        return context.window_manager.invoke_popup(self, width=320)
-
-    def draw(self, context):
-        layout = self.layout
-        layout.label(text="FloorID -1 = Basement")
-        layout.label(text="FloorID 0 = First floor")
-        layout.label(text="FloorID 1 = Second floor")
-        layout.label(text="FloorID 2 = Third floor")
-        layout.label(text="FloorID 3 = Fourth floor")
-
-
 class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
     """Refresh Minimap Mode"""
     bl_idname = "gtaminimap.prepare_scene"
@@ -552,45 +624,22 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
 
     def execute(self, context):
 
-        floors = int(context.scene.minimap_floors)
-        has_basement = bool(getattr(context.scene, 'has_basement', False))
+        floor_ids, warning = detect_floor_ids(context.scene)
+        context.scene['_gtaminimap_floor_ids'] = floor_ids
+        context.scene.has_basement = -1 in floor_ids
+        if warning:
+            self.report({'WARNING'}, warning + ' Number of floors: 1.')
 
         minimap_collection = bpy.data.collections.get("Minimap")
         if minimap_collection is None:
             minimap_collection = bpy.data.collections.new("Minimap")
             context.scene.collection.children.link(minimap_collection)
 
-        # Create missing cameras without touching existing ones
+        # Create missing cameras; Stage 2 updates only reliable world-space heights.
         first_camera = None
 
-        if has_basement:
-            cam_name = "MinimapCam_basement"
-            cam_obj = bpy.data.objects.get(cam_name)
-            if cam_obj is None:
-                cam_data = bpy.data.cameras.new(name=cam_name)
-                cam_data.type = 'ORTHO'
-
-                cam_obj = bpy.data.objects.new(cam_name, cam_data)
-                minimap_collection.objects.link(cam_obj)
-
-                cam_obj.location = (
-                    0.0,
-                    0.0,
-                    -1.0
-                )
-
-                cam_obj.rotation_euler = (
-                    0.0,
-                    0.0,
-                    0.0
-                )
-
-                cam_obj.lock_rotation[0] = True
-                cam_obj.lock_rotation[1] = True
-                cam_obj.lock_rotation[2] = True
-
-        for floor in range(floors):
-            cam_name = f"MinimapCam_{floor + 1}floor"
+        for floor in floor_ids:
+            cam_name = floor_camera_name(floor)
             cam_obj = bpy.data.objects.get(cam_name)
             if cam_obj is None:
                 cam_data = bpy.data.cameras.new(name=cam_name)
@@ -615,12 +664,36 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
                 cam_obj.lock_rotation[1] = True
                 cam_obj.lock_rotation[2] = True
 
-            if floor == 0:
+            if first_camera is None or floor == 0:
                 first_camera = cam_obj
 
         # Set first camera as active
         if first_camera is not None:
             context.scene.camera = first_camera
+
+        height_warnings = []
+        if not warning:
+            context.view_layer.update()
+            try:
+                bounds, height_warnings = detect_floor_bounds(context, floor_ids, debug_print)
+                for floor_id, (lower, upper) in bounds.items():
+                    camera = context.scene.objects.get(floor_camera_name(floor_id))
+                    if camera is None or camera.type != 'CAMERA':
+                        height_warnings.append(f"FloorID {floor_id}: minimap camera not found. Height unchanged.")
+                        continue
+                    camera_z = upper - 0.10 * (upper - lower)
+                    try:
+                        set_camera_world_height(camera, camera_z)
+                    except (ValueError, RuntimeError) as exc:
+                        height_warnings.append(f"FloorID {floor_id}: camera height unchanged: {exc}.")
+                        continue
+                    debug_print(f"[Minimap heights] FloorID {floor_id}: lower={lower:.4f}, "
+                                f"upper={upper:.4f}, camera Z={camera_z:.4f}")
+            except Exception as exc:
+                height_warnings.append("Automatic camera height setup could not be completed. Check the MLO collision mesh.")
+                debug_print(f"[Minimap heights] Analysis error: {exc}")
+            for message in height_warnings:
+                self.report({'WARNING'}, f"Number of floors: {len(floor_ids)}. {message}")
 
         # Save original shading settings once per session (window_manager)
         wm = context.window_manager
@@ -779,16 +852,6 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
                             except Exception:
                                 continue
 
-        if not context.scene.mlo_name.strip():
-            try:
-                archetype = context.scene.ytyps[0].selected_archetype
-
-                if archetype and archetype.type == "sollumz_archetype_mlo":
-                    context.scene.mlo_name = archetype.name
-
-            except Exception:
-                pass
-
         if prefs is not None:
             shot_res = prefs.shot_resolution
         else:
@@ -797,7 +860,9 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
         context.scene.render.resolution_x = shot_res
         context.scene.render.resolution_y = shot_res
 
-        self.report({'INFO'}, "Minimap mode enabled.")
+        active_floor_cameras(context.scene)
+        if not warning and not height_warnings:
+            self.report({'INFO'}, f'Number of floors: {len(floor_ids)}. Minimap mode enabled.')
         return {'FINISHED'}
 
 
@@ -993,7 +1058,7 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
                 def render_layer(filename_path, visible_objs, transparent=True, opaque_bg=False, bg_override=None):
                     scene.render.filepath = str(filename_path)
-                    print(f"[Render] render_layer start: {filename_path}, transparent={transparent}, bg_override={bg_override}")
+                    debug_print(f"[Render] render_layer start: {filename_path}, transparent={transparent}, bg_override={bg_override}")
                     try:
                         if transparent:
                             scene.render.image_settings.color_mode = 'RGBA'
@@ -1050,14 +1115,14 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                         pass
 
                     try:
-                        print(f"[Render] performing OpenGL render to {filename_path}")
+                        debug_print(f"[Render] performing OpenGL render to {filename_path}")
                         if render_ctx is not None:
                             with render_ctx:
                                 bpy.ops.render.opengl(write_still=True)
                         else:
                             override = {'window': context.window, 'screen': context.screen, 'area': area_for_render, 'region': region, 'scene': scene}
                             bpy.ops.render.opengl(override, write_still=True)
-                        print(f"[Render] OpenGL render complete for {filename_path}")
+                        debug_print(f"[Render] OpenGL render complete for {filename_path}")
                     except Exception:
                         raise
                     finally:
@@ -1074,7 +1139,7 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
                     try:
                         if transparent and filename_path is not None:
-                            print(f"[Render] post-process start for {filename_path}")
+                            debug_print(f"[Render] post-process start for {filename_path}")
                             try:
                                 if filename_path.name.lower() != 'background.png':
                                     try:
@@ -1133,14 +1198,14 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                                         try:
                                             if img is not None:
                                                 bpy.data.images.remove(img)
-                                                print(f"[Render] removed loaded image after postprocess: {fp_str}")
+                                                debug_print(f"[Render] removed loaded image after postprocess: {fp_str}")
                                         except Exception:
                                             pass
                                     except Exception:
                                         pass
                             except Exception:
                                 pass
-                            print(f"[Render] post-process end for {filename_path}")
+                            debug_print(f"[Render] post-process end for {filename_path}")
                     except Exception:
                         pass
 
@@ -1243,7 +1308,7 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                     ])
 
                     merge_svg_layers(svg_layers, final_svg)
-                    if not getattr(context.scene, 'has_basement', False) and svg_index == 3:
+                    if not getattr(context.scene, 'has_basement', False) and svg_index == self._first_svg_index:
                         if bool(getattr(prefs, 'show_background', True)):
                             merge_svg_layers(
                                 [
@@ -1259,10 +1324,10 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
                             if svg_fp.exists():
                                 svg_fp.unlink()
-                                print(f"[Cleanup] Removed: {svg_fp}")
+                                debug_print(f"[Cleanup] Removed: {svg_fp}")
 
                         except Exception as e:
-                            print(f"[Cleanup] SVG remove error: {e}")
+                            debug_print(f"[Cleanup] SVG remove error: {e}")
 
                     for layer in layer_names:
                         try:
@@ -1270,10 +1335,10 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
                             if png_fp.exists():
                                 png_fp.unlink()
-                                print(f"[Cleanup] Removed: {png_fp}")
+                                debug_print(f"[Cleanup] Removed: {png_fp}")
 
                         except Exception as e:
-                            print(f"[Cleanup] PNG remove error: {e}")
+                            debug_print(f"[Cleanup] PNG remove error: {e}")
 
                     for layer in layer_names:
                         try:
@@ -1281,13 +1346,13 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
                             if pbm_fp.exists():
                                 pbm_fp.unlink()
-                                print(f"[Cleanup] Removed: {pbm_fp}")
+                                debug_print(f"[Cleanup] Removed: {pbm_fp}")
 
                         except Exception as e:
-                            print(f"[Cleanup] PBM remove error: {e}")
+                            debug_print(f"[Cleanup] PBM remove error: {e}")
 
                 except Exception as e:
-                    print(f"Potrace export error: {e}")
+                    debug_print(f"Potrace export error: {e}")
 
             except Exception:
                 pass
@@ -1422,23 +1487,13 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
         mlo_name = context.scene.mlo_name.strip()
 
-        floor_cameras = []
-        for obj in bpy.data.objects:
-            if getattr(obj, 'type', None) != 'CAMERA':
-                continue
-            name = getattr(obj, 'name', '')
-            if name == 'MinimapCam_basement':
-                floor_cameras.append((-1, obj, 1, 1))
-                continue
-            if not name.startswith('MinimapCam_') or not name.endswith('floor'):
-                continue
-            try:
-                floor_number = int(name[len('MinimapCam_'):-len('floor')])
-            except Exception:
-                continue
-            floor_cameras.append((floor_number, obj, floor_number * 2 + 1, floor_number * 2 + 1))
-
-        floor_cameras.sort(key=lambda item: item[0])
+        floor_cameras = active_floor_cameras(scene)
+        expected_ids = list(scene.get('_gtaminimap_floor_ids', [0]))
+        if len(floor_cameras) != len(expected_ids):
+            self.report({'WARNING'}, 'Minimap cameras are missing. Please run Refresh Minimap Mode first.')
+            return {'CANCELLED'}
+        scene.has_basement = -1 in expected_ids
+        self._first_svg_index = floor_cameras[0][2]
 
         floor_data = []
         result = {'FINISHED'}
@@ -1492,7 +1547,7 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                     temp_svg.unlink()
 
         except Exception as e:
-            print(f"[GFX] Error: {e}")
+            debug_print(f"[GFX] Error: {e}")
 
         return result
 
@@ -1614,8 +1669,8 @@ class GTAMINIMAP_OT_apply_color_selected(bpy.types.Operator):
         for obj in mesh_objs:
             try:
                 c = _clamp_color_tuple(color, length=4)
-                print("CUSTOM PREF:", color)
-                print("AFTER CLAMP:", c)
+                debug_print("CUSTOM PREF:", color)
+                debug_print("AFTER CLAMP:", c)
                 obj.color = (c[0], c[1], c[2], c[3])
             except Exception:
                 pass
@@ -1666,7 +1721,6 @@ class GTAMINIMAP_OT_reset_colors(bpy.types.Operator):
         self.report({'INFO'}, "Minimap colors reset.")
         return {'FINISHED'}
 classes = (
-    GTAMINIMAP_OT_floor_mapping_help,
     GTAMINIMAP_OT_prepare_scene,
     GTAMINIMAP_OT_make_shot,
     GTAMINIMAP_OT_apply_color_selected,

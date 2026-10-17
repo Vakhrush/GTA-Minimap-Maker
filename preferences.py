@@ -14,6 +14,12 @@ def update_shot_quality(self, context):
 class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
     bl_idname = __package__
 
+    debug_info: bpy.props.BoolProperty(
+        name="Debug Info",
+        description="Print minimap diagnostics and external tool output to the console",
+        default=False
+    )
+
     output_path: bpy.props.StringProperty(
         name="Output Path",
         description="Directory to save minimap shots",
@@ -124,6 +130,7 @@ class GTAMINIMAP_Preferences(bpy.types.AddonPreferences):
         layout.prop(self, "jpexs_path")
         layout.prop(self, "shot_resolution")
         layout.prop(self, "author")
+        layout.prop(self, "debug_info")
         layout.separator()
         box = layout.box()
         box.label(text="Minimap Colors")

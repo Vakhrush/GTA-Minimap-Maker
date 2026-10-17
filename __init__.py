@@ -2,7 +2,7 @@ bl_info = {
     "name": "GTA Minimap Maker",
     "author": "Bigbigdog",
     "version": (1, 2),
-    "blender": (5, 1, 0),
+    "blender": (5, 2, 0),
     "location": "View3D > Sidebar > GTA Tools",
     "description": "Create GTA minimap from Sollumz scenes",
     "warning": "",
@@ -12,7 +12,7 @@ bl_info = {
 
 import bpy
 
-from bpy.props import StringProperty, EnumProperty, BoolProperty
+from bpy.props import StringProperty, BoolProperty
 from . import operator, panel, preferences
 
 
@@ -23,16 +23,6 @@ def register():
     bpy.types.Scene.mlo_name = StringProperty(
         name="MLO Name",
         default=""
-    )
-
-    bpy.types.Scene.minimap_floors = EnumProperty(
-        items=[
-            ('1', "1", ""),
-            ('2', "2", ""),
-            ('3', "3", ""),
-            ('4', "4", ""),
-        ],
-        default='1'
     )
 
     bpy.types.Scene.has_basement = BoolProperty(
@@ -48,7 +38,6 @@ def register():
 
 def unregister():
 
-    del bpy.types.Scene.minimap_floors
     del bpy.types.Scene.has_basement
     del bpy.types.Scene.mlo_name
 
