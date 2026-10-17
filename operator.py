@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 import re
 import tempfile
-from .floor_geometry import detect_floor_bounds, set_camera_world_height
+from .floor_geometry import detect_floor_bounds, set_camera_world_height, set_camera_clipping
 
 
 def debug_enabled():
@@ -689,6 +689,11 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
                         continue
                     debug_print(f"[Minimap heights] FloorID {floor_id}: lower={lower:.4f}, "
                                 f"upper={upper:.4f}, camera Z={camera_z:.4f}")
+                    context.view_layer.update()
+                    try:
+                        set_camera_clipping(camera, lower, upper, debug_print)
+                    except (ValueError, RuntimeError) as exc:
+                        height_warnings.append(f"FloorID {floor_id}: camera clipping unchanged: {exc}.")
             except Exception as exc:
                 height_warnings.append("Automatic camera height setup could not be completed. Check the MLO collision mesh.")
                 debug_print(f"[Minimap heights] Analysis error: {exc}")
@@ -862,7 +867,7 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
 
         active_floor_cameras(context.scene)
         if not warning and not height_warnings:
-            self.report({'INFO'}, f'Number of floors: {len(floor_ids)}. Minimap mode enabled.')
+            self.report({'INFO'}, f'Number of floors: {len(floor_ids)}')
         return {'FINISHED'}
 
 

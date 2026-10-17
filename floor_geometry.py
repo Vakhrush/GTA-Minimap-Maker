@@ -80,8 +80,8 @@ def choose_floor_bounds(samples_by_floor, debug, ceiling_samples=()):
             ceiling = above[0] if above else None
             secondary = [round(v['z'], 4) for v in significant if v['max_z'] < floor['min_z']]
             if secondary:
-                warnings.append(f"FloorID {floor_id}: using dominant floor Z={floor['z']:.4f}; "
-                                f"secondary lower levels {secondary} were not used for camera height.")
+                debug(f"[Minimap heights] FloorID {floor_id}: using dominant floor Z={floor['z']:.4f}; "
+                      f"secondary lower levels {secondary} were not used for camera height.")
         floors[floor_id] = floor['max_z']
         floor_areas[floor_id] = floor['area']
         if ceiling is not None:
@@ -258,3 +258,34 @@ def set_camera_world_height(camera, height):
         parent_matrix = camera.parent.matrix_world @ camera.matrix_parent_inverse
         target = parent_matrix.inverted() @ target
     camera.location = target - camera.delta_location
+
+
+def set_camera_clipping(camera, lower, upper, debug):
+    """Clip from the actual camera position to 1% of a floor height below its floor.
+
+    Blender's orthographic camera looks along local -Z; clip distances start at
+    the camera, not at UpperZ. Thus 1.01*FloorHeight must lose the camera's
+    setback from UpperZ (0.10*FloorHeight after automatic height placement).
+    The caller updates the dependency graph before reading matrix_world here.
+    """
+    if camera.data.type != 'ORTHO':
+        raise ValueError('an orthographic camera is required')
+    if camera.constraints or camera.animation_data or camera.data.animation_data:
+        raise ValueError('the camera has constraints or animation')
+    up = camera.matrix_world.to_3x3().col[2]
+    if up.length <= 1e-12 or (up.normalized().z < 1.0 - 1e-8):
+        raise ValueError('the camera must point vertically downward')
+    height = upper - lower
+    camera_z = camera.matrix_world.translation.z
+    if not all(math.isfinite(v) for v in (lower, upper, camera_z)) or not lower < camera_z < upper:
+        raise ValueError('the camera must be between the detected floor boundaries')
+    clip_end = height * 1.01 - (upper - camera_z)
+    clip_start = max(0.001, camera.data.bl_rna.properties['clip_start'].hard_min)
+    if (clip_end <= clip_start or camera_z - lower <= clip_start
+            or clip_end > camera.data.bl_rna.properties['clip_end'].hard_max):
+        raise ValueError('the calculated clipping range is outside camera limits')
+    camera.data.clip_start = clip_start
+    camera.data.clip_end = clip_end
+    debug(f"[Minimap clipping] Camera: {camera.name}; floor height={height:.4f}, camera Z={camera_z:.4f}, "
+          f"clip_start={clip_start:.4f}, clip_end={clip_end:.4f}, "
+          f"visible Z=[{camera_z - clip_end:.4f}, {camera_z - clip_start:.4f}]")
