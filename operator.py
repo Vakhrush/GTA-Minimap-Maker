@@ -7,6 +7,10 @@ import shutil
 import re
 import tempfile
 from .floor_geometry import detect_floor_bounds, set_camera_world_height, set_camera_clipping
+from .camera_geometry import fit_camera, temporary_mlo_visibility
+from .preferences import map_resolution, background_options
+from .scene_visibility import hide_portal_entities, hide_collisions
+from .svg_outline import outline_path
 
 
 def debug_enabled():
@@ -531,63 +535,31 @@ viewBox="{viewbox}">
 
 
 def add_shell_walls(shell_svg, walls_svg, thickness, color):
-    """Add shell contour strokes to the existing walls SVG."""
-    try:
-        if not shell_svg.exists() or not walls_svg.exists() or thickness <= 0.0:
-            return
-
-        with open(shell_svg, "r", encoding="utf-8") as f:
-            shell_content = f.read()
-        with open(walls_svg, "r", encoding="utf-8") as f:
-            walls_content = f.read()
-
-        shell_groups = re.findall(r"<g\b.*?</g>", shell_content, re.DOTALL)
-        if not shell_groups:
-            return
-
-        stroke_width = 2.0 * 100.0 * thickness
-        def convert_paths(match):
-            path = match.group(0) if hasattr(match, "group") else match
-            path = re.sub(r"\s+(?:fill|stroke|stroke-width|style)=\"[^\"]*\"", "", path)
-            path = re.sub(r"\s*/?>$", "", path)
-            return (
-                f'{path} fill="none" stroke="{svg_color_to_hex(color)}" '
-                f'stroke-width="{stroke_width:g}" stroke-linejoin="miter" '
-                f'stroke-linecap="round"/>'
-            )
-
-        shell_paths = []
-        for group in shell_groups:
-            shell_paths.extend(re.findall(r"<path\b[^>]*?d=\"[^\"]+\"[^>]*/?>", group, re.DOTALL))
-        if not shell_paths:
-            return
-
-        addition = ''.join(convert_paths(path) for path in shell_paths)
-        mask_paths = []
-        for path in shell_paths:
-            clean_path = re.sub(r"\s+(?:fill|stroke|stroke-width|style)=\"[^\"]*\"", "", path)
-            clean_path = re.sub(r"\s*/?>$", "", clean_path)
-            mask_paths.append(
-                f'{clean_path} fill="none" stroke="white" stroke-width="{stroke_width:g}" '
-                'stroke-linejoin="miter" stroke-linecap="round"/>'
-            )
-            mask_paths.append(f'{clean_path} fill="black" stroke="none"/>')
-        mask_paths = ''.join(mask_paths)
-        mask = '<mask id="shell-based-walls-mask" maskUnits="userSpaceOnUse" ' \
-            'x="0" y="0" width="2048" height="2048">' + mask_paths + '</mask>'
-        addition = addition.replace(' fill="none"', ' fill="none" mask="url(#shell-based-walls-mask)"')
-        addition = '<defs>' + mask + '</defs>' + addition
-        walls_group = re.search(r"<g\b[^>]*>.*?</g>", walls_content, re.DOTALL)
-        if not walls_group:
-            return
-        group_content = walls_group.group(0)
-        group_content = group_content.rsplit("</g>", 1)[0] + addition + "</g>"
-        walls_content = walls_content[:walls_group.start()] + group_content + walls_content[walls_group.end():]
-        with open(walls_svg, "w", encoding="utf-8") as f:
-            f.write(walls_content)
-        debug_print(f"[SVG] Added shell-based walls: {walls_svg}")
-    except Exception as e:
-        debug_print(f"[SVG] Shell wall error: {e}")
+    """Bake the outward shell stroke into filled vector geometry for GFX."""
+    import xml.etree.ElementTree as ET
+    if thickness <= 0.0:
+        return
+    if not shell_svg.exists() or not walls_svg.exists():
+        raise ValueError('Shell/walls SVG is missing; cannot create shell walls')
+    root = ET.fromstring(shell_svg.read_text(encoding='utf-8'))
+    additions = []
+    for group in root.findall('.//{*}g'):
+        paths = group.findall('{*}path')
+        if not paths:
+            continue
+        if any(path.get('transform') for path in paths):
+            raise ValueError('Unexpected per-path transform in Potrace SVG')
+        data = outline_path([path.get('d', '') for path in paths], 100.0 * thickness)
+        if data:
+            filled = ET.Element('g', {'fill': svg_color_to_hex(color), 'stroke': 'none'})
+            if group.get('transform'):
+                filled.set('transform', group.get('transform'))
+            ET.SubElement(filled, 'path', {'d': data, 'fill-rule': 'nonzero'})
+            additions.append(ET.tostring(filled, encoding='unicode'))
+    content = walls_svg.read_text(encoding='utf-8')
+    content = content.replace('</svg>', ''.join(additions) + '</svg>')
+    walls_svg.write_text(content, encoding='utf-8')
+    debug_print(f'[SVG] Added filled shell walls: {walls_svg}')
 
 
 def object_is_sollumz(obj):
@@ -671,17 +643,27 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
         if first_camera is not None:
             context.scene.camera = first_camera
 
+        # Fit against the same output dimensions used by Refresh and export.
+        addon_entry = context.preferences.addons.get(__package__)
+        prefs = addon_entry.preferences if addon_entry else None
+        shot_res = map_resolution(prefs)
+
+        context.scene.render.resolution_x = shot_res
+        context.scene.render.resolution_y = shot_res
+
         height_warnings = []
         if not warning:
             context.view_layer.update()
             try:
-                bounds, height_warnings = detect_floor_bounds(context, floor_ids, debug_print)
+                with temporary_mlo_visibility(context, debug_print):
+                    bounds, height_warnings = detect_floor_bounds(
+                        context, floor_ids, debug_print, getattr(prefs, 'camera_height_offset', 10.0))
                 for floor_id, (lower, upper) in bounds.items():
                     camera = context.scene.objects.get(floor_camera_name(floor_id))
                     if camera is None or camera.type != 'CAMERA':
                         height_warnings.append(f"FloorID {floor_id}: minimap camera not found. Height unchanged.")
                         continue
-                    camera_z = upper - 0.10 * (upper - lower)
+                    camera_z = upper - getattr(prefs, 'camera_height_offset', 10.0) / 100 * (upper - lower)
                     try:
                         set_camera_world_height(camera, camera_z)
                     except (ValueError, RuntimeError) as exc:
@@ -691,12 +673,26 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
                                 f"upper={upper:.4f}, camera Z={camera_z:.4f}")
                     context.view_layer.update()
                     try:
-                        set_camera_clipping(camera, lower, upper, debug_print)
+                        set_camera_clipping(camera, lower, upper, debug_print,
+                                            margin=getattr(prefs, 'camera_clipping_margin', 1.0))
                     except (ValueError, RuntimeError) as exc:
                         height_warnings.append(f"FloorID {floor_id}: camera clipping unchanged: {exc}.")
             except Exception as exc:
                 height_warnings.append("Automatic camera height setup could not be completed. Check the MLO collision mesh.")
                 debug_print(f"[Minimap heights] Analysis error: {exc}")
+            # Center and fit independently using each camera's actual clipping range,
+            # including a retained/manual range if height detection was unavailable.
+            context.view_layer.update()
+            for floor_id in floor_ids:
+                camera = context.scene.objects.get(floor_camera_name(floor_id))
+                if camera is None or camera.type != 'CAMERA':
+                    continue
+                try:
+                    fit_camera(context, camera, debug_print, margin=getattr(prefs, 'ortho_scale_margin', 1.0))
+                    context.view_layer.update()
+                except Exception as exc:
+                    height_warnings.append(f"FloorID {floor_id}: camera X/Y and scale unchanged: {exc}.")
+                    debug_print(f"[Minimap centering] Camera: {camera.name}; error: {exc}")
             for message in height_warnings:
                 self.report({'WARNING'}, f"Number of floors: {len(floor_ids)}. {message}")
 
@@ -857,17 +853,20 @@ class GTAMINIMAP_OT_prepare_scene(bpy.types.Operator):
                             except Exception:
                                 continue
 
-        if prefs is not None:
-            shot_res = prefs.shot_resolution
-        else:
-            shot_res = 2048
-
-        context.scene.render.resolution_x = shot_res
-        context.scene.render.resolution_y = shot_res
-
         active_floor_cameras(context.scene)
         if not warning and not height_warnings:
             self.report({'INFO'}, f'Number of floors: {len(floor_ids)}')
+        if getattr(prefs, 'hide_doors', True):
+            try:
+                for message in hide_portal_entities(context, debug_print):
+                    self.report({'WARNING'}, message)
+            except Exception as exc:
+                self.report({'WARNING'}, f'Doors could not be hidden: {exc}')
+        # Must remain the last scene operation, after camera fitting and doors.
+        if getattr(prefs, 'auto_hide_collisions', True):
+            message = hide_collisions(debug_print)
+            if message:
+                self.report({'WARNING'}, message)
         return {'FINISHED'}
 
 
@@ -879,6 +878,11 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
     def export_floor(self, context, scene, prefs, target_dir, out_path, area_for_render, region, space_for_render, svg_index):
         timestamp = None
+        try:
+            fill_background, shell_background = background_options(prefs)
+        except ValueError as exc:
+            self.report({'WARNING'}, str(exc))
+            return {'CANCELLED'}
 
         # Validate active scene camera before starting
         cam_obj = context.scene.camera
@@ -977,7 +981,7 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
             except Exception:
                 pass
 
-            # perform OpenGL viewport render in the 3D view context
+            # Prepare the 3D view context for temporary layer renders
             try:
                 if hasattr(context, 'temp_override'):
                     render_override = context.temp_override(window=context.window, area=area_for_render, region=region, space=space_for_render)
@@ -992,12 +996,6 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                 # save original film_transparent setting and force transparent film for layer renders when needed
                 orig_film_transparent = getattr(scene.render, 'film_transparent', False)
 
-                if render_ctx is not None:
-                    with render_ctx:
-                        bpy.ops.render.opengl(write_still=True)
-                else:
-                    override = {'window': context.window, 'screen': context.screen, 'area': area_for_render, 'region': region, 'scene': scene}
-                    bpy.ops.render.opengl(override, write_still=True)
             except Exception as e:
                 self.report({'ERROR'}, f"OpenGL render failed: {e}")
                 raise
@@ -1223,11 +1221,12 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                     except Exception:
                         pass
 
-                try:
-                    background_fp = target_dir / 'background.png'
-                    render_layer(background_fp, [], transparent=False, opaque_bg=True)
-                except Exception:
-                    pass
+                if fill_background:
+                    try:
+                        background_fp = target_dir / 'background.png'
+                        render_layer(background_fp, [], transparent=False, opaque_bg=True)
+                    except Exception:
+                        pass
 
                 try:
                     shell_fp = target_dir / 'shell.png'
@@ -1256,7 +1255,7 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                 self.report({'INFO'}, "Layered PNG export completed.")
 
                 try:
-                    layer_names = ['background', 'shell', 'entity', 'walls', 'custom']
+                    layer_names = (['background'] if fill_background else []) + ['shell', 'entity', 'walls', 'custom']
 
                     bg_c = (0.0, 0.0, 0.0, 1.0)
 
@@ -1280,7 +1279,9 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                         svg_fp = target_dir / f"{layer}.svg"
 
                         if pbm_fp.exists():
-                            if run_potrace(pbm_fp, svg_fp):
+                            if not run_potrace(pbm_fp, svg_fp):
+                                raise RuntimeError(f'Could not trace {layer} to SVG')
+                            if svg_fp.exists():
                                 if layer == "background":
                                     recolor_svg(svg_fp, bg_color)
                                 elif layer == "shell":
@@ -1292,7 +1293,7 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                                 elif layer == "custom":
                                     recolor_svg(svg_fp, (1.0, 1.0, 1.0, 1.0))
 
-                    if bool(getattr(prefs, 'auto_walls_from_shell', False)):
+                    if shell_background:
                         add_shell_walls(
                             target_dir / "shell.svg",
                             target_dir / "walls.svg",
@@ -1303,7 +1304,7 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                     final_svg = target_dir / f"{svg_index}.svg"
 
                     svg_layers = []
-                    if bool(getattr(prefs, 'show_background', True)):
+                    if fill_background:
                         svg_layers.append(target_dir / "background.svg")
                     svg_layers.extend([
                         target_dir / "shell.svg",
@@ -1314,7 +1315,7 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
                     merge_svg_layers(svg_layers, final_svg)
                     if not getattr(context.scene, 'has_basement', False) and svg_index == self._first_svg_index:
-                        if bool(getattr(prefs, 'show_background', True)):
+                        if fill_background:
                             merge_svg_layers(
                                 [
                                     target_dir / "background.svg",
@@ -1334,34 +1335,22 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                         except Exception as e:
                             debug_print(f"[Cleanup] SVG remove error: {e}")
 
-                    for layer in layer_names:
-                        try:
-                            png_fp = target_dir / f"{layer}.png"
-
-                            if png_fp.exists():
-                                png_fp.unlink()
-                                debug_print(f"[Cleanup] Removed: {png_fp}")
-
-                        except Exception as e:
-                            debug_print(f"[Cleanup] PNG remove error: {e}")
-
-                    for layer in layer_names:
-                        try:
-                            pbm_fp = target_dir / f"{layer}.pbm"
-
-                            if pbm_fp.exists():
-                                pbm_fp.unlink()
-                                debug_print(f"[Cleanup] Removed: {pbm_fp}")
-
-                        except Exception as e:
-                            debug_print(f"[Cleanup] PBM remove error: {e}")
-
                 except Exception as e:
-                    debug_print(f"Potrace export error: {e}")
+                    self.report({'ERROR'}, f'SVG export failed: {e}')
+                    return {'CANCELLED'}
 
-            except Exception:
-                pass
+            except Exception as e:
+                self.report({'ERROR'}, f'Layer export failed: {e}')
+                return {'CANCELLED'}
         finally:
+            # Raster layers are temporary inputs, never final deliverables.
+            for layer in (['background'] if fill_background else []) + ['shell', 'entity', 'walls', 'custom']:
+                for suffix in ('.png', '.pbm'):
+                    temporary = target_dir / (layer + suffix)
+                    try:
+                        temporary.unlink(missing_ok=True)
+                    except OSError as exc:
+                        self.report({'WARNING'}, f'Could not remove temporary file {temporary.name}: {exc}')
             try:
                 if prev_show_gizmo is not None:
                     space_for_render.show_gizmo = prev_show_gizmo
@@ -1381,10 +1370,17 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                 pass
 
         try:
-            if out_path.exists():
-                self.report({'INFO'}, f"Minimap saved to: {out_path}")
+            final_svg = target_dir / f'{svg_index}.svg'
+            if final_svg.exists():
+                # Remove this floor's preview left by an older add-on version.
+                # No composite PNG is generated by the current export anymore.
+                try:
+                    out_path.unlink(missing_ok=True)
+                except OSError as exc:
+                    self.report({'WARNING'}, f'Could not remove old preview {out_path.name}: {exc}')
+                self.report({'INFO'}, f"Minimap SVG saved to: {final_svg}")
             else:
-                self.report({'ERROR'}, f"Minimap render did not produce file: {out_path}")
+                self.report({'ERROR'}, f"Minimap export did not produce file: {final_svg}")
                 return {'CANCELLED'}
         except Exception as e:
             self.report({'ERROR'}, f"Error verifying save: {e}")
@@ -1415,6 +1411,11 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
             return None
 
         prefs = get_addon_preferences(context)
+        try:
+            background_options(prefs)
+        except ValueError as exc:
+            self.report({'WARNING'}, str(exc))
+            return {'CANCELLED'}
 
         default_res = 2048
         min_res = 1024
@@ -1422,7 +1423,7 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
 
         if prefs is not None:
             try:
-                shot_res = int(getattr(prefs, 'shot_resolution', default_res))
+                shot_res = map_resolution(prefs)
             except Exception:
                 shot_res = default_res
 
@@ -1545,6 +1546,9 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
         try:
             if mlo_name and floor_data:
                 build_gfx(target_dir, mlo_name, floor_data)
+                if not getattr(prefs, 'keep_source_svg', True):
+                    for _, _, svg_index, _ in floor_cameras:
+                        (target_dir / f'{svg_index}.svg').unlink(missing_ok=True)
 
             if not getattr(context.scene, 'has_basement', False):
                 temp_svg = target_dir / "1.svg"
@@ -1552,7 +1556,8 @@ class GTAMINIMAP_OT_make_shot(bpy.types.Operator):
                     temp_svg.unlink()
 
         except Exception as e:
-            debug_print(f"[GFX] Error: {e}")
+            self.report({'ERROR'}, f'GFX export failed: {e}. Source SVG files were retained when possible.')
+            return {'CANCELLED'}
 
         return result
 

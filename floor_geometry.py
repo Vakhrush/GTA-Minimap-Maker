@@ -40,7 +40,7 @@ def cluster_levels(samples):
     return levels
 
 
-def choose_floor_bounds(samples_by_floor, debug, ceiling_samples=()):
+def choose_floor_bounds(samples_by_floor, debug, ceiling_samples=(), camera_height_offset=10.0):
     """Return reliable floor intervals and reasons for leaving other cameras alone."""
     bounds = {}
     warnings = []
@@ -155,7 +155,7 @@ def choose_floor_bounds(samples_by_floor, debug, ceiling_samples=()):
                 bounds[last_id] = (lower, upper)
                 missing_upper.remove(last_id)
                 warnings.append(f"FloorID {last_id}: estimated floor height {height:.4f} from previous floors; "
-                                f"estimated upper Z={upper:.4f}, camera Z={upper - 0.1 * height:.4f}.")
+                                f"estimated upper Z={upper:.4f}, camera Z={upper - camera_height_offset / 100 * height:.4f}.")
                 debug(f"[Minimap heights] FloorID {last_id}: previous heights={previous}; "
                       f"source=estimated median height; lower={lower:.4f}, upper={upper:.4f}")
     for floor_id in sorted(missing_upper - invalid):
@@ -163,7 +163,7 @@ def choose_floor_bounds(samples_by_floor, debug, ceiling_samples=()):
     return bounds, warnings
 
 
-def detect_floor_bounds(context, floor_ids, debug):
+def detect_floor_bounds(context, floor_ids, debug, camera_height_offset=10.0):
     """Inspect the named MLO hierarchy without changing geometry, materials or Rooms."""
     scene = context.scene
     name = scene.mlo_name.strip()
@@ -242,7 +242,7 @@ def detect_floor_bounds(context, floor_ids, debug):
         return {}, [f"Camera heights unchanged: collision materials reference invalid RoomIDs {sorted(invalid_room_ids)}."]
     if not any(samples.values()):
         return {}, ["Camera heights unchanged: no usable horizontal collision surfaces found in the MLO hierarchy (excluding RoomID 0 / Limbo)."]
-    return choose_floor_bounds(samples, debug, ceiling_samples)
+    return choose_floor_bounds(samples, debug, ceiling_samples, camera_height_offset)
 
 
 def set_camera_world_height(camera, height):
@@ -260,12 +260,12 @@ def set_camera_world_height(camera, height):
     camera.location = target - camera.delta_location
 
 
-def set_camera_clipping(camera, lower, upper, debug):
-    """Clip from the actual camera position to 1% of a floor height below its floor.
+def set_camera_clipping(camera, lower, upper, debug, margin=1.0):
+    """Clip from the actual camera position to the configured margin below its floor.
 
     Blender's orthographic camera looks along local -Z; clip distances start at
-    the camera, not at UpperZ. Thus 1.01*FloorHeight must lose the camera's
-    setback from UpperZ (0.10*FloorHeight after automatic height placement).
+    the camera, not at UpperZ. Thus (1 + margin/100)*FloorHeight must lose
+    the camera's actual setback from UpperZ.
     The caller updates the dependency graph before reading matrix_world here.
     """
     if camera.data.type != 'ORTHO':
@@ -279,7 +279,7 @@ def set_camera_clipping(camera, lower, upper, debug):
     camera_z = camera.matrix_world.translation.z
     if not all(math.isfinite(v) for v in (lower, upper, camera_z)) or not lower < camera_z < upper:
         raise ValueError('the camera must be between the detected floor boundaries')
-    clip_end = height * 1.01 - (upper - camera_z)
+    clip_end = height * (1 + margin / 100) - (upper - camera_z)
     clip_start = max(0.001, camera.data.bl_rna.properties['clip_start'].hard_min)
     if (clip_end <= clip_start or camera_z - lower <= clip_start
             or clip_end > camera.data.bl_rna.properties['clip_end'].hard_max):

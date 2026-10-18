@@ -40,17 +40,10 @@ class GTAMINIMAP_PT_panel(bpy.types.Panel):
         # export settings
         layout.separator()
         layout.prop(context.scene, "mlo_name", text="MLO Name")
-        prefs = context.preferences.addons.get(__package__)
-        if prefs:
-            layout.prop(prefs.preferences, "shot_quality")
-            layout.prop(prefs.preferences, "auto_walls_from_shell")
-            row = layout.row()
-            row.enabled = prefs.preferences.auto_walls_from_shell
-            row.prop(prefs.preferences, "wall_thickness")
 
         # final step
         layout.separator()
-        layout.operator('gtaminimap.make_shot', icon='RENDER_STILL')
+        layout.operator('gtaminimap.make_shot', text='Create GFX', icon='EXPORT')
 
 
 classes = (GTAMINIMAP_PT_panel,)
