@@ -6,6 +6,12 @@ The addon automatically renders an orthographic top view, converts it into vecto
 
 ---
 
+## Video Tutorial
+
+[Watch the GTA Minimap Maker tutorial on YouTube](https://www.youtube.com/watch?v=cxDXExwygJg)
+
+---
+
 ## Features
 
 - One-click minimap generation
@@ -101,12 +107,10 @@ Choose **Custom Paint Color**, select mesh objects, and click **Apply Color To S
 
 ### Background
 
-Enabled by default. Expand the section and choose one of two mutually exclusive modes:
+Expand the section and choose one of two mutually exclusive modes:
 
 - **Automatically Create Walls from Shell** (default): adds an outward outline around the Shell geometry, filled with the Walls color. The outline is exported as filled vector geometry, not an SVG stroke. **Wall Thickness** controls its width and is available only in this mode.
 - **Fill Background**: includes a solid background layer using the Walls color.
-
-Disable **Background** to omit both automatic shell outlines and the solid background. Existing Walls geometry remains part of the export.
 
 ### Advanced Settings
 
@@ -120,15 +124,15 @@ These settings are applied when you click **Refresh Minimap Mode**:
 
 ### Automatically Hide Collisions
 
-Runs Sollumz **Hide Collisions** as the final scene operation of Refresh, after the cameras have been configured. If the operator is unavailable, the addon reports a warning.
+Enabled by default. Runs Sollumz **Hide Collisions** as the final scene operation of Refresh, after the cameras have been configured. If the operator is unavailable, the addon reports a warning.
 
 ### Hide doors
 
-Hides objects linked to MLO entities with a valid portal assignment, including their children. This uses portal assignments rather than object names, so it applies to all matching portal-linked entities. It does not delete objects or change YTYP assignments.
+Enabled by default. Hides objects linked to MLO entities with a valid portal assignment, including their children. This uses portal assignments rather than object names, so it applies to all matching portal-linked entities. It does not delete objects or change YTYP assignments.
 
 ### Keep Source SVG Files
 
-Keeps the numbered floor SVG files alongside the GFX. Disable it to remove the current export's floor SVG files after a successful GFX build. If the GFX build fails, the source SVG files are retained.
+Enabled by default. Keeps the numbered floor SVG files alongside the GFX. Disable it to remove the current export's floor SVG files after a successful GFX build. If the GFX build fails, the source SVG files are retained.
 
 ### Debug Info
 
@@ -138,43 +142,28 @@ Enable it to print detailed diagnostics and external tool output to the console,
 
 ## Workflow
 
-### 1. Set MLO Name
-
-Open **3D Viewport → Sidebar → GTA Tools → GTA Minimap Maker**.
-
-Enter the relevant MLO archetype name in **MLO Name**. Automatic camera setup also needs a scene object with that name: it can be a mesh or a parent containing collision meshes.
-
-If the field is empty, Refresh attempts to use the selected MLO archetype, or the only MLO available. If automatic detection is unsuccessful, enter the name manually and refresh again.
-
-The MLO name is also used to calculate the JOAAT hash for the exported GFX filename.
-
----
-
-### 2. Refresh Minimap Mode
+### 1. Refresh Minimap Mode
 
 Click **Refresh Minimap Mode** and use **Solid** viewport shading.
 
 The addon:
-
+- refresh attempts to use the selected MLO archetype, or the only MLO available. If automatic detection is unsuccessful, enter the name manually and refresh again.
 - reads the FloorID values of all Rooms in the relevant MLO;
 - sorts the unique FloorIDs and creates one minimap camera per detected floor;
 - detects approximate floor heights from collision geometry and RoomID assignments;
 - configures each camera's height, clipping, horizontal center, and orthographic scale independently;
 - applies the optional door and collision hiding settings.
 
-There are no manual **Number of floors** or **Has Basement** controls. FloorID `-1` identifies the basement. IDs do not need to be consecutive: `-1, 0, 2` produces three cameras.
-
 If MLO or Room data is unavailable, Refresh reports the reason and uses one default floor. Camera parameters that cannot be calculated remain unchanged; inspect the warnings before exporting.
-
-Hidden MLO geometry and its collections are temporarily revealed for camera fitting and then restored. The optional **Automatically Hide Collisions** action runs afterward.
 
 ---
 
-### 3. Review Cameras and Prepare the Scene
+### 2. Review Cameras and Prepare the Scene
 
 Check the Camera View for every detected floor. Automatic height detection is approximate. For the highest floor, the addon can use a downward-facing ceiling surface or estimate the height from previously detected floors, with a warning when an estimate is used.
 
 If needed, adjust camera position, **Orthographic Scale**, **Clip Start**, and **Clip End** manually. Running Refresh again recalculates the supported camera settings.
+For multi-floor interiors, adjust the cameras' Clip Start / Clip End settings if necessary to prevent lower floors from appearing in the camera view. If unwanted details appear in the final .svg file, it means the camera has captured geometry from the floor below, and you need to reduce the Clip End distance.
 
 Keep the original downward-facing camera orientation and zero **Camera Shift**.
 
@@ -182,12 +171,12 @@ Prepare the visible geometry and colors:
 
 - Hide unnecessary props.
 - Adjust Entity, Shell, and Walls colors.
-- Use **Custom Paint** for helper meshes such as entrances, exits, or map icons; the exported custom layer is white.
+- Use **Custom Paint** for helper meshes such as entrances, exits, or map icons. Only one custom color is supported, and it must be different from the other Minimap Colors.
 - Review the Background mode and Wall Thickness in addon preferences.
 
 ---
 
-### 4. Export
+### 3. Export
 
 Click **Create GFX**.
 
@@ -217,6 +206,8 @@ SVG filenames follow the FloorID, including when some FloorIDs are absent:
 | 3 | `9.svg` |
 
 Without a basement, `1.svg` is used temporarily for template import and removed afterward. PNG previews are no longer generated; temporary raster layers are removed after processing. With **Keep Source SVG Files** disabled, a successful export into a clean output folder leaves only the GFX file.
+
+For more detailed information about the add-on, read [How it works](How_it_works.md) or [Как это работает](How_it_works_RU.md).
 
 ---
 
