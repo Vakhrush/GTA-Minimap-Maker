@@ -1,6 +1,6 @@
 # GTA Minimap Maker
 
-Blender addon for generating GTA V MLO minimaps directly from Sollumz scenes.
+Blender addon for generating GTA V MLO minimaps directly from Blender scenes with Sollumz.
 
 The addon automatically renders an orthographic top view, converts it into vector graphics using Potrace, imports the vector into a GFX template using JPEXS Free Flash Decompiler and exports a ready-to-use minimap for GTA V.
 
@@ -22,7 +22,7 @@ The addon automatically renders an orthographic top view, converts it into vecto
 ## Requirements
 
 - Blender 5.1+ (earlier versions have not been tested)
-- Sollumz 2.8.3+ (recommended)
+- Sollumz 2.9.0+ (recommended)
 - JPEXS Free Flash Decompiler
 
 ### JPEXS Free Flash Decompiler
@@ -72,100 +72,140 @@ Example:
 C:\Program Files (x86)\FFDec\
 ```
 
-### Shot Resolution
+### Map Quality
 
-Higher values produce more detailed minimaps but increase export time.
+Choose the resolution used to render each floor before vector conversion:
 
-Recommended values: 2048 and better
+| Preset | Resolution |
+| --- | --- |
+| Low | 1024 × 1024 |
+| Medium (default) | 2048 × 2048 |
+| High | 4096 × 4096 |
+| Ultra | 8192 × 8192 |
+
+Higher values capture more detail but increase processing time. Enable **Manual** to enter a custom resolution in **Manual Quality** (minimum 1024). Manual mode is disabled by default.
+
+### Author
+
+Optional author name written into the exported GFX metadata.
+
+### Minimap Colors
+
+Configure **Entity Color**, **Shell Color**, and **Walls**. The Walls color is also used for automatic shell outlines and the solid background when enabled.
+
+The same colors are available in the **GTA Tools → GTA Minimap Maker** panel, together with **Reset Minimap Colors**.
+
+### Custom Paint
+
+Choose **Custom Paint Color**, select mesh objects, and click **Apply Color To Selected Meshes** in the addon panel. This sets their object color for scene preparation. The current export converts the custom layer to a single white vector layer; it does not preserve multiple custom colors.
+
+### Background
+
+Enabled by default. Expand the section and choose one of two mutually exclusive modes:
+
+- **Automatically Create Walls from Shell** (default): adds an outward outline around the Shell geometry, filled with the Walls color. The outline is exported as filled vector geometry, not an SVG stroke. **Wall Thickness** controls its width and is available only in this mode.
+- **Fill Background**: includes a solid background layer using the Walls color.
+
+Disable **Background** to omit both automatic shell outlines and the solid background. Existing Walls geometry remains part of the export.
+
+### Advanced Settings
+
+These settings are applied when you click **Refresh Minimap Mode**:
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| Orthographic Scale Margin | 1% | Adds space around the geometry fitted into each camera. |
+| Camera Clipping Margin | 1% | Adds a margin based on the detected floor height, accounting for the camera's actual Z position. |
+| Camera Height Offset | 10% | Places the camera this percentage of the floor height below its upper boundary. |
+
+### Automatically Hide Collisions
+
+Runs Sollumz **Hide Collisions** as the final scene operation of Refresh, after the cameras have been configured. If the operator is unavailable, the addon reports a warning.
+
+### Hide doors
+
+Hides objects linked to MLO entities with a valid portal assignment, including their children. This uses portal assignments rather than object names, so it applies to all matching portal-linked entities. It does not delete objects or change YTYP assignments.
+
+### Keep Source SVG Files
+
+Keeps the numbered floor SVG files alongside the GFX. Disable it to remove the current export's floor SVG files after a successful GFX build. If the GFX build fails, the source SVG files are retained.
+
+### Debug Info
+
+Enable it to print detailed diagnostics and external tool output to the console, including FloorIDs, camera setup, used and unused cameras, and export steps. Warnings and status notifications can still appear when debug output is disabled.
 
 ![Preferences](docs/preferences.gif)
+
+> The GIFs below and above show an earlier interface. Use the current control names and workflow described here.
 
 ---
 
 ## Workflow
 
-### 1. Refresh Minimap Mode
+### 1. Set MLO Name
 
-Select:
+Open **3D Viewport → Sidebar → GTA Tools → GTA Minimap Maker**.
 
-- **Number of floors** (1–4)
-- **Has Basement** (optional)
+Enter the relevant MLO archetype name in **MLO Name**. Automatic camera setup also needs a scene object with that name: it can be a mesh or a parent containing collision meshes.
 
-Click:
+If the field is empty, Refresh attempts to use the selected MLO archetype, or the only MLO available. If automatic detection is unsuccessful, enter the name manually and refresh again.
 
-**Refresh Minimap Mode**
-
-Switch the viewport to **Solid** shading.
-
-The addon automatically:
-
-- creates a **Minimap** collection;
-- creates one camera for each floor;
-- optionally creates a basement camera.
-
-
-![MinimapMode](docs/minimap_mode.gif)
-
----
-
-### 2. Configure Camera
-
-**Camera Data**
-
-- Orthographic Scale
-- For multi-floor MLOs, configure the camera's **Clip Start and Clip End** values to exclude lower floors from the export.
-
-Do not modify:
-
-- Camera Rotation (XYZ)
-- Camera Shift
-
-![ConfigCam](docs/config_cam.gif)
-
----
-
-### 3. Prepare the Scene
-
-Configure the minimap appearance.
-
-Examples:
-
-- Hide unnecessary props.
-- Paint objects using **Custom Paint**.
-- Create white helper meshes representing entrances, exits or other map icons (single custom color).
-- Prepare the scene exactly as you want it to appear on the minimap.
-
-![Prepare](docs/prepare_scene.gif)
-
----
-
-### 4. Enter MLO Name
-
-Enter the MLO name in the addon panel.
-
-The addon automatically calculates the JOAAT hash and names the exported GFX accordingly.
+The MLO name is also used to calculate the JOAAT hash for the exported GFX filename.
 
 ![MLO](docs/mlo_name.gif)
 
 ---
 
-### 5. Export
+### 2. Refresh Minimap Mode
 
-Click:
+Click **Refresh Minimap Mode** and use **Solid** viewport shading.
 
-**Make Shot**
+The addon:
 
-For each floor, the addon automatically:
+- reads the FloorID values of all Rooms in the relevant MLO;
+- sorts the unique FloorIDs and creates one minimap camera per detected floor;
+- detects approximate floor heights from collision geometry and RoomID assignments;
+- configures each camera's height, clipping, horizontal center, and orthographic scale independently;
+- applies the optional door and collision hiding settings.
 
-- renders the scene;
-- generates vector layers;
-- merges SVG layers;
-- creates the floor SVG;
-- builds the final GFX;
-- patches the MLO name;
-- patches the JOAAT hash;
-- imports all generated SVGs into the GFX;
-- exports the finished minimap.
+There are no manual **Number of floors** or **Has Basement** controls. FloorID `-1` identifies the basement. IDs do not need to be consecutive: `-1, 0, 2` produces three cameras.
+
+If MLO or Room data is unavailable, Refresh reports the reason and uses one default floor. Camera parameters that cannot be calculated remain unchanged; inspect the warnings before exporting.
+
+Hidden MLO geometry and its collections are temporarily revealed for camera fitting and then restored. The optional **Automatically Hide Collisions** action runs afterward.
+
+![MinimapMode](docs/minimap_mode.gif)
+
+---
+
+### 3. Review Cameras and Prepare the Scene
+
+Check the Camera View for every detected floor. Automatic height detection is approximate. For the highest floor, the addon can use a downward-facing ceiling surface or estimate the height from previously detected floors, with a warning when an estimate is used.
+
+If needed, adjust camera position, **Orthographic Scale**, **Clip Start**, and **Clip End** manually. Running Refresh again recalculates the supported camera settings.
+
+Keep the original downward-facing camera orientation and zero **Camera Shift**.
+
+![ConfigCam](docs/config_cam.gif)
+
+Prepare the visible geometry and colors:
+
+- Hide unnecessary props.
+- Adjust Entity, Shell, and Walls colors.
+- Use **Custom Paint** for helper meshes such as entrances, exits, or map icons; the exported custom layer is white.
+- Review the Background mode and Wall Thickness in addon preferences.
+
+![Prepare](docs/prepare_scene.gif)
+
+---
+
+### 4. Export
+
+Click **Create GFX**.
+
+For each active floor, the addon renders temporary layers, converts them to SVG with Potrace, and merges them into a numbered floor SVG. It then uses JPEXS to import the floor shapes into the GFX template and configure the MLO name, hash, scale, and placement.
+
+Only cameras corresponding to the current detected FloorIDs are used. Older unused minimap cameras are not exported.
 
 ![Shot](docs/make_shot.gif)
 
@@ -173,15 +213,24 @@ For each floor, the addon automatically:
 
 ## Output
 
-The output directory contains:
+Files are written into a `Minimap_<blend filename>` subfolder of **Output Path** (`Minimap_Untitled` for an unsaved scene).
 
-- `int<hash>.gfx`
-- floor SVG files (`3.svg`, `5.svg`, `7.svg`, `9.svg`)
-- optional `1.svg` (basement)
-- PNG preview for each exported floor
+The output contains:
 
-Temporary files are automatically removed.
+- `int<hash>.gfx` — the finished minimap;
+- numbered floor SVG files when **Keep Source SVG Files** is enabled.
 
+SVG filenames follow the FloorID, including when some FloorIDs are absent:
+
+| FloorID | SVG filename |
+| --- | --- |
+| -1 (basement) | `1.svg` |
+| 0 | `3.svg` |
+| 1 | `5.svg` |
+| 2 | `7.svg` |
+| 3 | `9.svg` |
+
+Without a basement, `1.svg` is used temporarily for template import and removed afterward. PNG previews are no longer generated; temporary raster layers are removed after processing. With **Keep Source SVG Files** disabled, a successful export into a clean output folder leaves only the GFX file.
 
 ![Result](docs/result.png)
 ![Result](docs/result2.png)
@@ -190,9 +239,10 @@ Temporary files are automatically removed.
 
 ## Current Limitations
 
-- Supports up to **4 floors** plus **1 optional basement**.
-- Camera Shift is not supported.
-- Camera Rotation and Location X/Y must remain unchanged.
+- The GFX template supports FloorIDs **-1 through 3**: four above-ground floors and one basement. Values outside this range trigger a warning and a default single-floor setup.
+- Automatic camera setup requires suitable collision meshes and valid RoomID assignments. Ambiguous or insufficient geometry can require manual camera adjustments.
+- Camera Shift and changes to the original camera orientation are not supported by automatic fitting.
+- The custom vector layer is exported in white; multiple custom colors are not preserved.
 
 ---
 
@@ -207,4 +257,4 @@ Temporary files are automatically removed.
 
 If GTA Minimap Maker has been useful for your projects and saved you time, you can support its future development.
 
-➡️ See DONATE.md
+➡️ See [DONATE.md](DONATE.md)
