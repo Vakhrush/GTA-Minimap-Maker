@@ -134,10 +134,6 @@ Keeps the numbered floor SVG files alongside the GFX. Disable it to remove the c
 
 Enable it to print detailed diagnostics and external tool output to the console, including FloorIDs, camera setup, used and unused cameras, and export steps. Warnings and status notifications can still appear when debug output is disabled.
 
-![Preferences](docs/preferences.gif)
-
-> The GIFs below and above show an earlier interface. Use the current control names and workflow described here.
-
 ---
 
 ## Workflow
@@ -151,8 +147,6 @@ Enter the relevant MLO archetype name in **MLO Name**. Automatic camera setup al
 If the field is empty, Refresh attempts to use the selected MLO archetype, or the only MLO available. If automatic detection is unsuccessful, enter the name manually and refresh again.
 
 The MLO name is also used to calculate the JOAAT hash for the exported GFX filename.
-
-![MLO](docs/mlo_name.gif)
 
 ---
 
@@ -174,8 +168,6 @@ If MLO or Room data is unavailable, Refresh reports the reason and uses one defa
 
 Hidden MLO geometry and its collections are temporarily revealed for camera fitting and then restored. The optional **Automatically Hide Collisions** action runs afterward.
 
-![MinimapMode](docs/minimap_mode.gif)
-
 ---
 
 ### 3. Review Cameras and Prepare the Scene
@@ -186,16 +178,12 @@ If needed, adjust camera position, **Orthographic Scale**, **Clip Start**, and *
 
 Keep the original downward-facing camera orientation and zero **Camera Shift**.
 
-![ConfigCam](docs/config_cam.gif)
-
 Prepare the visible geometry and colors:
 
 - Hide unnecessary props.
 - Adjust Entity, Shell, and Walls colors.
 - Use **Custom Paint** for helper meshes such as entrances, exits, or map icons; the exported custom layer is white.
 - Review the Background mode and Wall Thickness in addon preferences.
-
-![Prepare](docs/prepare_scene.gif)
 
 ---
 
@@ -206,8 +194,6 @@ Click **Create GFX**.
 For each active floor, the addon renders temporary layers, converts them to SVG with Potrace, and merges them into a numbered floor SVG. It then uses JPEXS to import the floor shapes into the GFX template and configure the MLO name, hash, scale, and placement.
 
 Only cameras corresponding to the current detected FloorIDs are used. Older unused minimap cameras are not exported.
-
-![Shot](docs/make_shot.gif)
 
 ---
 
@@ -231,25 +217,6 @@ SVG filenames follow the FloorID, including when some FloorIDs are absent:
 | 3 | `9.svg` |
 
 Without a basement, `1.svg` is used temporarily for template import and removed afterward. PNG previews are no longer generated; temporary raster layers are removed after processing. With **Keep Source SVG Files** disabled, a successful export into a clean output folder leaves only the GFX file.
-
-![Result](docs/result.png)
-![Result](docs/result2.png)
-
----
-
-## Current Limitations
-
-- The GFX template supports FloorIDs **-1 through 3**: four above-ground floors and one basement. Values outside this range trigger a warning and a default single-floor setup.
-- Automatic camera setup requires suitable collision meshes and valid RoomID assignments. Ambiguous or insufficient geometry can require manual camera adjustments.
-- Camera Shift and changes to the original camera orientation are not supported by automatic fitting.
-- The custom vector layer is exported in white; multiple custom colors are not preserved.
-
----
-
-## Roadmap
-
-- Additional customization options
-- Additional export options
 
 ---
 
